@@ -38,8 +38,21 @@ COMMAND market_data_integration_test
 WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
+add_executable(moving_average_crossover_tests
+    tests/moving_average_crossover_test.cpp
+    src/moving_average_crossover.cpp
+)
+
+target_include_directories(moving_average_crossover_tests PRIVATE include)
+
+add_test(
+    NAME moving_average_crossover_tests
+    COMMAND moving_average_crossover_tests
+)
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     target_compile_options(backtester PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(market_data_tests PRIVATE -Wall -Wextra -Wpedantic)
     target_compile_options(market_data_integration_test PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(moving_average_crossover_tests PRIVATE -Wall -Wextra -Wpedantic)
 endif()

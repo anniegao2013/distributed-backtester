@@ -51,4 +51,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/backtester.dir/DependInfo.cmake"
   "CMakeFiles/market_data_tests.dir/DependInfo.cmake"
   "CMakeFiles/market_data_integration_test.dir/DependInfo.cmake"
+  "CMakeFiles/moving_average_crossover_tests.dir/DependInfo.cmake"
   )

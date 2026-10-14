@@ -1,0 +1,1 @@
+/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/moving_average_crossover_tests.dir/tests/moving_average_crossover_test.cpp.o CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.o -o moving_average_crossover_tests

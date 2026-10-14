@@ -165,6 +165,19 @@ market_data_integration_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/build
 .PHONY : market_data_integration_test/fast
 
+#=============================================================================
+# Target rules for targets named moving_average_crossover_tests
+
+# Build rule for target.
+moving_average_crossover_tests: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 moving_average_crossover_tests
+.PHONY : moving_average_crossover_tests
+
+# fast build rule for target.
+moving_average_crossover_tests/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/build
+.PHONY : moving_average_crossover_tests/fast
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -225,6 +238,7 @@ src/moving_average_crossover.o: src/moving_average_crossover.cpp.o
 # target to build an object file
 src/moving_average_crossover.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.o
 .PHONY : src/moving_average_crossover.cpp.o
 
 src/moving_average_crossover.i: src/moving_average_crossover.cpp.i
@@ -233,6 +247,7 @@ src/moving_average_crossover.i: src/moving_average_crossover.cpp.i
 # target to preprocess a source file
 src/moving_average_crossover.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.i
 .PHONY : src/moving_average_crossover.cpp.i
 
 src/moving_average_crossover.s: src/moving_average_crossover.cpp.s
@@ -241,6 +256,7 @@ src/moving_average_crossover.s: src/moving_average_crossover.cpp.s
 # target to generate assembly for a file
 src/moving_average_crossover.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.s
 .PHONY : src/moving_average_crossover.cpp.s
 
 tests/market_data_integration_test.o: tests/market_data_integration_test.cpp.o
@@ -291,6 +307,30 @@ tests/market_data_test.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/tests/market_data_test.cpp.s
 .PHONY : tests/market_data_test.cpp.s
 
+tests/moving_average_crossover_test.o: tests/moving_average_crossover_test.cpp.o
+.PHONY : tests/moving_average_crossover_test.o
+
+# target to build an object file
+tests/moving_average_crossover_test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/tests/moving_average_crossover_test.cpp.o
+.PHONY : tests/moving_average_crossover_test.cpp.o
+
+tests/moving_average_crossover_test.i: tests/moving_average_crossover_test.cpp.i
+.PHONY : tests/moving_average_crossover_test.i
+
+# target to preprocess a source file
+tests/moving_average_crossover_test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/tests/moving_average_crossover_test.cpp.i
+.PHONY : tests/moving_average_crossover_test.cpp.i
+
+tests/moving_average_crossover_test.s: tests/moving_average_crossover_test.cpp.s
+.PHONY : tests/moving_average_crossover_test.s
+
+# target to generate assembly for a file
+tests/moving_average_crossover_test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/tests/moving_average_crossover_test.cpp.s
+.PHONY : tests/moving_average_crossover_test.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -303,6 +343,7 @@ help:
 	@echo "... backtester"
 	@echo "... market_data_integration_test"
 	@echo "... market_data_tests"
+	@echo "... moving_average_crossover_tests"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
@@ -318,6 +359,9 @@ help:
 	@echo "... tests/market_data_test.o"
 	@echo "... tests/market_data_test.i"
 	@echo "... tests/market_data_test.s"
+	@echo "... tests/moving_average_crossover_test.o"
+	@echo "... tests/moving_average_crossover_test.i"
+	@echo "... tests/moving_average_crossover_test.s"
 .PHONY : help
 
 
