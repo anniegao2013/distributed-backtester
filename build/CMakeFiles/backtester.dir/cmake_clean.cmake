@@ -3,6 +3,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/backtester.dir/src/main.cpp.o.d"
   "CMakeFiles/backtester.dir/src/market_data.cpp.o"
   "CMakeFiles/backtester.dir/src/market_data.cpp.o.d"
+  "CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o"
+  "CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o.d"
   "backtester"
   "backtester.pdb"
 )

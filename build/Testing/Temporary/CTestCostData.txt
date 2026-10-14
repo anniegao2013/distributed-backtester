@@ -1,3 +1,3 @@
-market_data_tests 2 0.00302285
-market_data_integration_test 1 0.422386
+market_data_tests 3 0.0025109
+market_data_integration_test 2 0.0297631
 ---

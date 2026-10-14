@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(backtester
     src/main.cpp
     src/market_data.cpp
+    src/moving_average_crossover.cpp
 )
 
 target_include_directories(backtester PRIVATE include)

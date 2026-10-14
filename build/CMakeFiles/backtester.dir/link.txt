@@ -1,1 +1,1 @@
-/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/backtester.dir/src/main.cpp.o CMakeFiles/backtester.dir/src/market_data.cpp.o -o backtester
+/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/backtester.dir/src/main.cpp.o CMakeFiles/backtester.dir/src/market_data.cpp.o CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o -o backtester

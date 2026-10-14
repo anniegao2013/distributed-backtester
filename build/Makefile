@@ -219,6 +219,30 @@ src/market_data.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.s
 .PHONY : src/market_data.cpp.s
 
+src/moving_average_crossover.o: src/moving_average_crossover.cpp.o
+.PHONY : src/moving_average_crossover.o
+
+# target to build an object file
+src/moving_average_crossover.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o
+.PHONY : src/moving_average_crossover.cpp.o
+
+src/moving_average_crossover.i: src/moving_average_crossover.cpp.i
+.PHONY : src/moving_average_crossover.i
+
+# target to preprocess a source file
+src/moving_average_crossover.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.i
+.PHONY : src/moving_average_crossover.cpp.i
+
+src/moving_average_crossover.s: src/moving_average_crossover.cpp.s
+.PHONY : src/moving_average_crossover.s
+
+# target to generate assembly for a file
+src/moving_average_crossover.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.s
+.PHONY : src/moving_average_crossover.cpp.s
+
 tests/market_data_integration_test.o: tests/market_data_integration_test.cpp.o
 .PHONY : tests/market_data_integration_test.o
 
@@ -285,6 +309,9 @@ help:
 	@echo "... src/market_data.o"
 	@echo "... src/market_data.i"
 	@echo "... src/market_data.s"
+	@echo "... src/moving_average_crossover.o"
+	@echo "... src/moving_average_crossover.i"
+	@echo "... src/moving_average_crossover.s"
 	@echo "... tests/market_data_integration_test.o"
 	@echo "... tests/market_data_integration_test.i"
 	@echo "... tests/market_data_integration_test.s"

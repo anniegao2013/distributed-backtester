@@ -10,6 +10,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/Users/anniegao/Desktop/side_projects/distributed-backtester/src/main.cpp" "CMakeFiles/backtester.dir/src/main.cpp.o" "gcc" "CMakeFiles/backtester.dir/src/main.cpp.o.d"
   "/Users/anniegao/Desktop/side_projects/distributed-backtester/src/market_data.cpp" "CMakeFiles/backtester.dir/src/market_data.cpp.o" "gcc" "CMakeFiles/backtester.dir/src/market_data.cpp.o.d"
+  "/Users/anniegao/Desktop/side_projects/distributed-backtester/src/moving_average_crossover.cpp" "CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o" "gcc" "CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.
