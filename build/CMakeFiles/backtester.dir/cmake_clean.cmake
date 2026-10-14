@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/backtester.dir/src/backtest_engine.cpp.o"
+  "CMakeFiles/backtester.dir/src/backtest_engine.cpp.o.d"
   "CMakeFiles/backtester.dir/src/main.cpp.o"
   "CMakeFiles/backtester.dir/src/main.cpp.o.d"
   "CMakeFiles/backtester.dir/src/market_data.cpp.o"

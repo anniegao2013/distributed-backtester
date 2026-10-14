@@ -178,6 +178,46 @@ moving_average_crossover_tests/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/build
 .PHONY : moving_average_crossover_tests/fast
 
+#=============================================================================
+# Target rules for targets named backtest_engine_tests
+
+# Build rule for target.
+backtest_engine_tests: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 backtest_engine_tests
+.PHONY : backtest_engine_tests
+
+# fast build rule for target.
+backtest_engine_tests/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/build
+.PHONY : backtest_engine_tests/fast
+
+src/backtest_engine.o: src/backtest_engine.cpp.o
+.PHONY : src/backtest_engine.o
+
+# target to build an object file
+src/backtest_engine.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/backtest_engine.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o
+.PHONY : src/backtest_engine.cpp.o
+
+src/backtest_engine.i: src/backtest_engine.cpp.i
+.PHONY : src/backtest_engine.i
+
+# target to preprocess a source file
+src/backtest_engine.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/backtest_engine.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.i
+.PHONY : src/backtest_engine.cpp.i
+
+src/backtest_engine.s: src/backtest_engine.cpp.s
+.PHONY : src/backtest_engine.s
+
+# target to generate assembly for a file
+src/backtest_engine.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/backtest_engine.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.s
+.PHONY : src/backtest_engine.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -258,6 +298,30 @@ src/moving_average_crossover.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.s
 .PHONY : src/moving_average_crossover.cpp.s
+
+tests/backtest_engine_test.o: tests/backtest_engine_test.cpp.o
+.PHONY : tests/backtest_engine_test.o
+
+# target to build an object file
+tests/backtest_engine_test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o
+.PHONY : tests/backtest_engine_test.cpp.o
+
+tests/backtest_engine_test.i: tests/backtest_engine_test.cpp.i
+.PHONY : tests/backtest_engine_test.i
+
+# target to preprocess a source file
+tests/backtest_engine_test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.i
+.PHONY : tests/backtest_engine_test.cpp.i
+
+tests/backtest_engine_test.s: tests/backtest_engine_test.cpp.s
+.PHONY : tests/backtest_engine_test.s
+
+# target to generate assembly for a file
+tests/backtest_engine_test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.s
+.PHONY : tests/backtest_engine_test.cpp.s
 
 tests/market_data_integration_test.o: tests/market_data_integration_test.cpp.o
 .PHONY : tests/market_data_integration_test.o
@@ -340,10 +404,14 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... test"
+	@echo "... backtest_engine_tests"
 	@echo "... backtester"
 	@echo "... market_data_integration_test"
 	@echo "... market_data_tests"
 	@echo "... moving_average_crossover_tests"
+	@echo "... src/backtest_engine.o"
+	@echo "... src/backtest_engine.i"
+	@echo "... src/backtest_engine.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
@@ -353,6 +421,9 @@ help:
 	@echo "... src/moving_average_crossover.o"
 	@echo "... src/moving_average_crossover.i"
 	@echo "... src/moving_average_crossover.s"
+	@echo "... tests/backtest_engine_test.o"
+	@echo "... tests/backtest_engine_test.i"
+	@echo "... tests/backtest_engine_test.s"
 	@echo "... tests/market_data_integration_test.o"
 	@echo "... tests/market_data_integration_test.i"
 	@echo "... tests/market_data_integration_test.s"
