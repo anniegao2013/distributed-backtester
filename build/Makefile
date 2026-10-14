@@ -65,6 +65,16 @@ CMAKE_BINARY_DIR = /Users/anniegao/Desktop/side_projects/distributed-backtester/
 #=============================================================================
 # Targets provided globally by CMake.
 
+# Special rule for the target test
+test:
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running tests..."
+	/opt/homebrew/bin/ctest $(ARGS)
+.PHONY : test
+
+# Special rule for the target test
+test/fast: test
+.PHONY : test/fast
+
 # Special rule for the target edit_cache
 edit_cache:
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --cyan "Running CMake cache editor..."
@@ -129,6 +139,19 @@ backtester/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/build
 .PHONY : backtester/fast
 
+#=============================================================================
+# Target rules for targets named market_data_tests
+
+# Build rule for target.
+market_data_tests: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 market_data_tests
+.PHONY : market_data_tests
+
+# fast build rule for target.
+market_data_tests/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/build
+.PHONY : market_data_tests/fast
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -159,6 +182,7 @@ src/market_data.o: src/market_data.cpp.o
 # target to build an object file
 src/market_data.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.o
 .PHONY : src/market_data.cpp.o
 
 src/market_data.i: src/market_data.cpp.i
@@ -167,6 +191,7 @@ src/market_data.i: src/market_data.cpp.i
 # target to preprocess a source file
 src/market_data.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.i
 .PHONY : src/market_data.cpp.i
 
 src/market_data.s: src/market_data.cpp.s
@@ -175,7 +200,32 @@ src/market_data.s: src/market_data.cpp.s
 # target to generate assembly for a file
 src/market_data.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.s
 .PHONY : src/market_data.cpp.s
+
+tests/market_data_test.o: tests/market_data_test.cpp.o
+.PHONY : tests/market_data_test.o
+
+# target to build an object file
+tests/market_data_test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/tests/market_data_test.cpp.o
+.PHONY : tests/market_data_test.cpp.o
+
+tests/market_data_test.i: tests/market_data_test.cpp.i
+.PHONY : tests/market_data_test.i
+
+# target to preprocess a source file
+tests/market_data_test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/tests/market_data_test.cpp.i
+.PHONY : tests/market_data_test.cpp.i
+
+tests/market_data_test.s: tests/market_data_test.cpp.s
+.PHONY : tests/market_data_test.s
+
+# target to generate assembly for a file
+tests/market_data_test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/tests/market_data_test.cpp.s
+.PHONY : tests/market_data_test.cpp.s
 
 # Help Target
 help:
@@ -185,13 +235,18 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
+	@echo "... test"
 	@echo "... backtester"
+	@echo "... market_data_tests"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
 	@echo "... src/market_data.o"
 	@echo "... src/market_data.i"
 	@echo "... src/market_data.s"
+	@echo "... tests/market_data_test.o"
+	@echo "... tests/market_data_test.i"
+	@echo "... tests/market_data_test.s"
 .PHONY : help
 
 

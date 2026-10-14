@@ -64,10 +64,12 @@ CMAKE_BINARY_DIR = /Users/anniegao/Desktop/side_projects/distributed-backtester/
 
 # The main recursive "all" target.
 all: CMakeFiles/backtester.dir/all
+all: CMakeFiles/market_data_tests.dir/all
 .PHONY : all
 
 # The main recursive "codegen" target.
 codegen: CMakeFiles/backtester.dir/codegen
+codegen: CMakeFiles/market_data_tests.dir/codegen
 .PHONY : codegen
 
 # The main recursive "preinstall" target.
@@ -76,6 +78,7 @@ preinstall:
 
 # The main recursive "clean" target.
 clean: CMakeFiles/backtester.dir/clean
+clean: CMakeFiles/market_data_tests.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -109,6 +112,38 @@ CMakeFiles/backtester.dir/codegen:
 CMakeFiles/backtester.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/clean
 .PHONY : CMakeFiles/backtester.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/market_data_tests.dir
+
+# All Build rule for target.
+CMakeFiles/market_data_tests.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles --progress-num=4,5,6 "Built target market_data_tests"
+.PHONY : CMakeFiles/market_data_tests.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/market_data_tests.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles 3
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/market_data_tests.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles 0
+.PHONY : CMakeFiles/market_data_tests.dir/rule
+
+# Convenience name for target.
+market_data_tests: CMakeFiles/market_data_tests.dir/rule
+.PHONY : market_data_tests
+
+# codegen rule for target.
+CMakeFiles/market_data_tests.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles --progress-num=4,5,6 "Finished codegen for target market_data_tests"
+.PHONY : CMakeFiles/market_data_tests.dir/codegen
+
+# clean rule for target.
+CMakeFiles/market_data_tests.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/clean
+.PHONY : CMakeFiles/market_data_tests.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

@@ -1,0 +1,33 @@
+Start testing: Oct 14 11:43 PDT
+----------------------------------------------------------
+1/1 Testing: market_data_tests
+1/1 Test: market_data_tests
+Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/market_data_tests"
+Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester/build
+"market_data_tests" start time: Oct 14 11:43 PDT
+Output:
+----------------------------------------------------------
+[PASS] valid CSV loads correctly
+[PASS] header-only CSV rejected
+[PASS] empty CSV rejected
+[PASS] missing file rejected
+[PASS] invalid header rejected
+[PASS] wrong column count rejected
+[PASS] invalid date rejected
+[PASS] invalid numeric value rejected
+[PASS] nonpositive price rejected
+[PASS] inconsistent OHLC rejected
+[PASS] negative volume rejected
+[PASS] duplicate dates rejected
+[PASS] out-of-order dates rejected
+
+Results: 13 passed, 0 failed
+<end of output>
+Test time =   0.23 sec
+----------------------------------------------------------
+Test Passed.
+"market_data_tests" end time: Oct 14 11:43 PDT
+"market_data_tests" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 14 11:43 PDT
