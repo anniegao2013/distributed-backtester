@@ -1,10 +1,10 @@
-Start testing: Oct 14 11:43 PDT
+Start testing: Oct 14 11:50 PDT
 ----------------------------------------------------------
-1/1 Testing: market_data_tests
-1/1 Test: market_data_tests
+1/2 Testing: market_data_tests
+1/2 Test: market_data_tests
 Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/market_data_tests"
 Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester/build
-"market_data_tests" start time: Oct 14 11:43 PDT
+"market_data_tests" start time: Oct 14 11:50 PDT
 Output:
 ----------------------------------------------------------
 [PASS] valid CSV loads correctly
@@ -23,11 +23,30 @@ Output:
 
 Results: 13 passed, 0 failed
 <end of output>
-Test time =   0.23 sec
+Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"market_data_tests" end time: Oct 14 11:43 PDT
+"market_data_tests" end time: Oct 14 11:50 PDT
 "market_data_tests" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Oct 14 11:43 PDT
+2/2 Testing: market_data_integration_test
+2/2 Test: market_data_integration_test
+Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/market_data_integration_test"
+Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester
+"market_data_integration_test" start time: Oct 14 11:50 PDT
+Output:
+----------------------------------------------------------
+[PASS] OpenIntro dataset integration test
+  Trading days: 17346
+  First date:   1950-01-03
+  Last date:    2018-12-07
+<end of output>
+Test time =   0.42 sec
+----------------------------------------------------------
+Test Passed.
+"market_data_integration_test" end time: Oct 14 11:50 PDT
+"market_data_integration_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 14 11:50 PDT

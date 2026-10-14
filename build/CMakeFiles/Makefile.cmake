@@ -50,4 +50,5 @@ set(CMAKE_MAKEFILE_PRODUCTS
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/backtester.dir/DependInfo.cmake"
   "CMakeFiles/market_data_tests.dir/DependInfo.cmake"
+  "CMakeFiles/market_data_integration_test.dir/DependInfo.cmake"
   )

@@ -152,6 +152,19 @@ market_data_tests/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/build
 .PHONY : market_data_tests/fast
 
+#=============================================================================
+# Target rules for targets named market_data_integration_test
+
+# Build rule for target.
+market_data_integration_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 market_data_integration_test
+.PHONY : market_data_integration_test
+
+# fast build rule for target.
+market_data_integration_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/build
+.PHONY : market_data_integration_test/fast
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -183,6 +196,7 @@ src/market_data.o: src/market_data.cpp.o
 src/market_data.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.o
 .PHONY : src/market_data.cpp.o
 
 src/market_data.i: src/market_data.cpp.i
@@ -192,6 +206,7 @@ src/market_data.i: src/market_data.cpp.i
 src/market_data.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.i
 .PHONY : src/market_data.cpp.i
 
 src/market_data.s: src/market_data.cpp.s
@@ -201,7 +216,32 @@ src/market_data.s: src/market_data.cpp.s
 src/market_data.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.s
 .PHONY : src/market_data.cpp.s
+
+tests/market_data_integration_test.o: tests/market_data_integration_test.cpp.o
+.PHONY : tests/market_data_integration_test.o
+
+# target to build an object file
+tests/market_data_integration_test.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/tests/market_data_integration_test.cpp.o
+.PHONY : tests/market_data_integration_test.cpp.o
+
+tests/market_data_integration_test.i: tests/market_data_integration_test.cpp.i
+.PHONY : tests/market_data_integration_test.i
+
+# target to preprocess a source file
+tests/market_data_integration_test.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/tests/market_data_integration_test.cpp.i
+.PHONY : tests/market_data_integration_test.cpp.i
+
+tests/market_data_integration_test.s: tests/market_data_integration_test.cpp.s
+.PHONY : tests/market_data_integration_test.s
+
+# target to generate assembly for a file
+tests/market_data_integration_test.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/tests/market_data_integration_test.cpp.s
+.PHONY : tests/market_data_integration_test.cpp.s
 
 tests/market_data_test.o: tests/market_data_test.cpp.o
 .PHONY : tests/market_data_test.o
@@ -237,6 +277,7 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... test"
 	@echo "... backtester"
+	@echo "... market_data_integration_test"
 	@echo "... market_data_tests"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
@@ -244,6 +285,9 @@ help:
 	@echo "... src/market_data.o"
 	@echo "... src/market_data.i"
 	@echo "... src/market_data.s"
+	@echo "... tests/market_data_integration_test.o"
+	@echo "... tests/market_data_integration_test.i"
+	@echo "... tests/market_data_integration_test.s"
 	@echo "... tests/market_data_test.o"
 	@echo "... tests/market_data_test.i"
 	@echo "... tests/market_data_test.s"
