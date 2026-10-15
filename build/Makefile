@@ -250,6 +250,7 @@ src/market_data.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o
 .PHONY : src/market_data.cpp.o
 
 src/market_data.i: src/market_data.cpp.i
@@ -260,6 +261,7 @@ src/market_data.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.i
 .PHONY : src/market_data.cpp.i
 
 src/market_data.s: src/market_data.cpp.s
@@ -270,6 +272,7 @@ src/market_data.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/market_data.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_tests.dir/build.make CMakeFiles/market_data_tests.dir/src/market_data.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/market_data_integration_test.dir/build.make CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.s
 .PHONY : src/market_data.cpp.s
 
 src/moving_average_crossover.o: src/moving_average_crossover.cpp.o
@@ -279,6 +282,7 @@ src/moving_average_crossover.o: src/moving_average_crossover.cpp.o
 src/moving_average_crossover.cpp.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o
 .PHONY : src/moving_average_crossover.cpp.o
 
 src/moving_average_crossover.i: src/moving_average_crossover.cpp.i
@@ -288,6 +292,7 @@ src/moving_average_crossover.i: src/moving_average_crossover.cpp.i
 src/moving_average_crossover.cpp.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.i
 .PHONY : src/moving_average_crossover.cpp.i
 
 src/moving_average_crossover.s: src/moving_average_crossover.cpp.s
@@ -297,6 +302,7 @@ src/moving_average_crossover.s: src/moving_average_crossover.cpp.s
 src/moving_average_crossover.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtester.dir/build.make CMakeFiles/backtester.dir/src/moving_average_crossover.cpp.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/moving_average_crossover_tests.dir/build.make CMakeFiles/moving_average_crossover_tests.dir/src/moving_average_crossover.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/backtest_engine_tests.dir/build.make CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.s
 .PHONY : src/moving_average_crossover.cpp.s
 
 tests/backtest_engine_test.o: tests/backtest_engine_test.cpp.o

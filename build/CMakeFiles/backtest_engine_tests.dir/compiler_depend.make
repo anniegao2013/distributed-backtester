@@ -1623,8 +1623,11 @@ CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o: /Users/an
   /Library/Developer/CommandLineTools/usr/lib/clang/21/include/stdint.h \
   /Users/anniegao/Desktop/side_projects/distributed-backtester/include/backtest_engine.h \
   /Users/anniegao/Desktop/side_projects/distributed-backtester/include/market_data.h \
+  /Users/anniegao/Desktop/side_projects/distributed-backtester/include/moving_average_crossover.h \
   /Users/anniegao/Desktop/side_projects/distributed-backtester/include/strategy.h
 
+
+/Users/anniegao/Desktop/side_projects/distributed-backtester/include/moving_average_crossover.h:
 
 /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/unistd.h:
 

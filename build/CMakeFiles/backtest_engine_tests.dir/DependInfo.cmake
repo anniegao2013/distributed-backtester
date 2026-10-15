@@ -9,6 +9,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/Users/anniegao/Desktop/side_projects/distributed-backtester/src/backtest_engine.cpp" "CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o" "gcc" "CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o.d"
+  "/Users/anniegao/Desktop/side_projects/distributed-backtester/src/market_data.cpp" "CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o" "gcc" "CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o.d"
+  "/Users/anniegao/Desktop/side_projects/distributed-backtester/src/moving_average_crossover.cpp" "CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o" "gcc" "CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o.d"
   "/Users/anniegao/Desktop/side_projects/distributed-backtester/tests/backtest_engine_test.cpp" "CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o" "gcc" "CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o.d"
   )
 

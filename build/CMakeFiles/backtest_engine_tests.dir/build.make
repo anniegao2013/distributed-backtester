@@ -100,19 +100,51 @@ CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.s"
 	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/anniegao/Desktop/side_projects/distributed-backtester/src/backtest_engine.cpp -o CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.s
 
+CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o: CMakeFiles/backtest_engine_tests.dir/flags.make
+CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o: /Users/anniegao/Desktop/side_projects/distributed-backtester/src/moving_average_crossover.cpp
+CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o: CMakeFiles/backtest_engine_tests.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o -MF CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o.d -o CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o -c /Users/anniegao/Desktop/side_projects/distributed-backtester/src/moving_average_crossover.cpp
+
+CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/anniegao/Desktop/side_projects/distributed-backtester/src/moving_average_crossover.cpp > CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.i
+
+CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/anniegao/Desktop/side_projects/distributed-backtester/src/moving_average_crossover.cpp -o CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.s
+
+CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o: CMakeFiles/backtest_engine_tests.dir/flags.make
+CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o: /Users/anniegao/Desktop/side_projects/distributed-backtester/src/market_data.cpp
+CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o: CMakeFiles/backtest_engine_tests.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o -MF CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o.d -o CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o -c /Users/anniegao/Desktop/side_projects/distributed-backtester/src/market_data.cpp
+
+CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.i"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /Users/anniegao/Desktop/side_projects/distributed-backtester/src/market_data.cpp > CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.i
+
+CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.s"
+	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /Users/anniegao/Desktop/side_projects/distributed-backtester/src/market_data.cpp -o CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.s
+
 # Object files for target backtest_engine_tests
 backtest_engine_tests_OBJECTS = \
 "CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o" \
-"CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o"
+"CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o" \
+"CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o" \
+"CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o"
 
 # External object files for target backtest_engine_tests
 backtest_engine_tests_EXTERNAL_OBJECTS =
 
 backtest_engine_tests: CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o
 backtest_engine_tests: CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o
+backtest_engine_tests: CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o
+backtest_engine_tests: CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o
 backtest_engine_tests: CMakeFiles/backtest_engine_tests.dir/build.make
 backtest_engine_tests: CMakeFiles/backtest_engine_tests.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX executable backtest_engine_tests"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking CXX executable backtest_engine_tests"
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/backtest_engine_tests.dir/link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

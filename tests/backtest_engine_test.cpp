@@ -1,4 +1,5 @@
 #include "backtest_engine.h"
+#include "moving_average_crossover.h"
 
 #include <cmath>
 #include <iostream>
@@ -354,6 +355,54 @@ void test_signal_executes_at_next_open() {
     );
 }
 
+void test_pre_range_warmup() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 9.0),
+        make_bar("2020-01-03", 8.0),
+        make_bar("2020-01-04", 9.0),
+
+        // First day of the backtest: crossover occurs at this close.
+        make_bar("2020-01-05", 13.0),
+
+        // The buy executes here, at the open of $14.
+        make_ohlc_bar(
+            "2020-01-06", 14.0, 16.0, 14.0, 15.0
+        )
+    };
+
+    const BacktestConfig config{
+        "warmup-test",
+        "TEST",
+        "2020-01-05",
+        "2020-01-06",
+        100.0,
+        {
+            {"short_window", 2},
+            {"long_window", 3}
+        }
+    };
+
+    MovingAverageCrossover strategy(2, 3);
+    const JobResult result = run_backtest(data, strategy, config);
+
+    // The Jan 5 signal uses earlier bars to detect the crossover.
+    // It executes at $14 on Jan 6, and the position is valued at $15.
+    const double expected_return = 15.0 / 14.0 - 1.0;
+
+    expect(
+        std::abs(
+            result.metrics.total_return - expected_return
+        ) < 1e-9,
+        "Warm-up history should allow a crossover on the first backtest bar"
+    );
+
+    expect(
+        result.metrics.number_of_trades == 0,
+        "The open final position should not count as a completed trade"
+    );
+}
+
 }  // namespace
 
 int main() {
@@ -367,6 +416,8 @@ int main() {
         test_open_position_marked_to_market();
         test_final_bar_signal_not_executed();
         test_signal_executes_at_next_open();
+
+        test_pre_range_warmup();
 
         std::cout << "All backtest engine tests passed.\n";
         return 0;

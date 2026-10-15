@@ -54,6 +54,8 @@ add_test(
 add_executable(backtest_engine_tests
     tests/backtest_engine_test.cpp
     src/backtest_engine.cpp
+    src/moving_average_crossover.cpp
+    src/market_data.cpp
 )
 
 target_include_directories(backtest_engine_tests PRIVATE include)

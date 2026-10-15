@@ -1,10 +1,10 @@
-Start testing: Oct 14 13:34 PDT
+Start testing: Oct 15 13:51 PDT
 ----------------------------------------------------------
 1/4 Testing: market_data_tests
 1/4 Test: market_data_tests
 Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/market_data_tests"
 Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester/build
-"market_data_tests" start time: Oct 14 13:34 PDT
+"market_data_tests" start time: Oct 15 13:51 PDT
 Output:
 ----------------------------------------------------------
 [PASS] valid CSV loads correctly
@@ -26,7 +26,7 @@ Results: 13 passed, 0 failed
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"market_data_tests" end time: Oct 14 13:34 PDT
+"market_data_tests" end time: Oct 15 13:51 PDT
 "market_data_tests" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -34,7 +34,7 @@ Test Passed.
 2/4 Test: market_data_integration_test
 Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/market_data_integration_test"
 Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester
-"market_data_integration_test" start time: Oct 14 13:34 PDT
+"market_data_integration_test" start time: Oct 15 13:51 PDT
 Output:
 ----------------------------------------------------------
 [PASS] OpenIntro dataset integration test
@@ -45,7 +45,7 @@ Output:
 Test time =   0.06 sec
 ----------------------------------------------------------
 Test Passed.
-"market_data_integration_test" end time: Oct 14 13:34 PDT
+"market_data_integration_test" end time: Oct 15 13:51 PDT
 "market_data_integration_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -53,7 +53,7 @@ Test Passed.
 3/4 Test: moving_average_crossover_tests
 Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/moving_average_crossover_tests"
 Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester/build
-"moving_average_crossover_tests" start time: Oct 14 13:34 PDT
+"moving_average_crossover_tests" start time: Oct 15 13:51 PDT
 Output:
 ----------------------------------------------------------
 [PASS] invalid windows rejected
@@ -68,10 +68,10 @@ Output:
 
 Results: 9 passed, 0 failed
 <end of output>
-Test time =   0.00 sec
+Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"moving_average_crossover_tests" end time: Oct 14 13:34 PDT
+"moving_average_crossover_tests" end time: Oct 15 13:51 PDT
 "moving_average_crossover_tests" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -79,16 +79,16 @@ Test Passed.
 4/4 Test: backtest_engine_tests
 Command: "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/backtest_engine_tests"
 Directory: /Users/anniegao/Desktop/side_projects/distributed-backtester/build
-"backtest_engine_tests" start time: Oct 14 13:34 PDT
+"backtest_engine_tests" start time: Oct 15 13:51 PDT
 Output:
 ----------------------------------------------------------
 All backtest engine tests passed.
 <end of output>
-Test time =   0.30 sec
+Test time =   0.33 sec
 ----------------------------------------------------------
 Test Passed.
-"backtest_engine_tests" end time: Oct 14 13:34 PDT
+"backtest_engine_tests" end time: Oct 15 13:51 PDT
 "backtest_engine_tests" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Oct 14 13:34 PDT
+End testing: Oct 15 13:51 PDT

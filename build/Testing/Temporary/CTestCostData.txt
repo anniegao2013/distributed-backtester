@@ -1,5 +1,5 @@
-market_data_tests 7 0.000852066
-market_data_integration_test 6 0.00987903
-moving_average_crossover_tests 4 0.000723771
-backtest_engine_tests 3 0.0995806
+market_data_tests 8 0.00164356
+market_data_integration_test 7 0.0091806
+moving_average_crossover_tests 5 0.00180822
+backtest_engine_tests 4 0.0830053
 ---

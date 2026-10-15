@@ -11,4 +11,4 @@ set_tests_properties(market_data_integration_test PROPERTIES  WORKING_DIRECTORY 
 add_test(moving_average_crossover_tests "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/moving_average_crossover_tests")
 set_tests_properties(moving_average_crossover_tests PROPERTIES  _BACKTRACE_TRIPLES "/Users/anniegao/Desktop/side_projects/distributed-backtester/CMakeLists.txt;49;add_test;/Users/anniegao/Desktop/side_projects/distributed-backtester/CMakeLists.txt;0;")
 add_test(backtest_engine_tests "/Users/anniegao/Desktop/side_projects/distributed-backtester/build/backtest_engine_tests")
-set_tests_properties(backtest_engine_tests PROPERTIES  _BACKTRACE_TRIPLES "/Users/anniegao/Desktop/side_projects/distributed-backtester/CMakeLists.txt;61;add_test;/Users/anniegao/Desktop/side_projects/distributed-backtester/CMakeLists.txt;0;")
+set_tests_properties(backtest_engine_tests PROPERTIES  _BACKTRACE_TRIPLES "/Users/anniegao/Desktop/side_projects/distributed-backtester/CMakeLists.txt;63;add_test;/Users/anniegao/Desktop/side_projects/distributed-backtester/CMakeLists.txt;0;")

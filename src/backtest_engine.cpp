@@ -3,7 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
-#include <utility>
+#include <string>
+#include <vector>
 
 namespace {
 
@@ -106,16 +107,38 @@ JobResult run_backtest(
         );
     }
 
-    // Select bars within the inclusive date range.
+    // Keep all bars up to the end date, including pre-range warm-up bars.
+    // This relies on the dataset being sorted by date.
     std::vector<MarketBar> bars;
     for (const MarketBar& bar : dataset) {
-        if (bar.date >= config.start_date &&
-            bar.date <= config.end_date) {
+        if (bar.date <= config.end_date) {
             bars.push_back(bar);
         }
     }
 
-    if (bars.empty()) {
+    // Find the first bar that belongs to the actual backtest period.
+    const auto start_it = std::lower_bound(
+        bars.begin(),
+        bars.end(),
+        config.start_date,
+        [](const MarketBar& bar, const std::string& date) {
+            return bar.date < date;
+        }
+    );
+
+    const std::size_t start_index =
+        static_cast<std::size_t>(start_it - bars.begin());
+
+    if (start_index == bars.size()) {
+        throw std::invalid_argument(
+            "No market data found in the requested date range"
+        );
+    }
+
+    // Verify that at least one bar falls within the requested range.
+    // Since bars are sorted and clipped at end_date, this also checks
+    // that the first bar on/after start_date is not after end_date.
+    if (bars[start_index].date > config.end_date) {
         throw std::invalid_argument(
             "No market data found in the requested date range"
         );
@@ -125,21 +148,26 @@ JobResult run_backtest(
     double shares = 0.0;
     std::size_t completed_trades = 0;
 
-    // Signals generated after a close execute at the next bar's open.
     Signal pending_signal = Signal::Hold;
 
-    // Contains only bars in the requested backtest range.
     std::vector<MarketBar> history;
     history.reserve(bars.size());
 
-    // Portfolio value at each bar's close.
     std::vector<double> equity_curve;
-    equity_curve.reserve(bars.size());
+    equity_curve.reserve(bars.size() - start_index);
 
-    for (std::size_t i = 0; i < bars.size(); ++i) {
+    // Warm-up: give the strategy historical context, but ignore signals.
+    // No positions, trades, or performance observations are created here.
+    for (std::size_t i = 0; i < start_index; ++i) {
+        history.push_back(bars[i]);
+        (void)strategy.on_bar(history, false);
+    }
+
+    // Actual backtest: portfolio accounting starts at start_index.
+    for (std::size_t i = start_index; i < bars.size(); ++i) {
         const MarketBar& bar = bars[i];
 
-        // 1. Execute yesterday's signal at today's open.
+        // Execute the previous in-range bar's signal at today's open.
         if (pending_signal == Signal::Buy && shares == 0.0) {
             shares = cash / bar.open;
             cash = 0.0;
@@ -151,15 +179,15 @@ JobResult run_backtest(
             ++completed_trades;
         }
 
-        // 2. Add today's completed bar to the available history.
+        // Add today's bar. The strategy sees warm-up bars plus
+        // all completed bars through today's close.
         history.push_back(bar);
 
-        // 3. Mark the portfolio to market at today's close.
+        // Record equity only for bars inside the requested range.
         const double equity = cash + shares * bar.close;
         equity_curve.push_back(equity);
 
-        // 4. Generate a signal using no future data.
-        // That signal cannot execute until the next bar's open.
+        // Today's signal can execute only at the next bar's open.
         pending_signal = strategy.on_bar(history, shares > 0.0);
     }
 
