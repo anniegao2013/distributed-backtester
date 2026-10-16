@@ -1,0 +1,15 @@
+# Build artifacts
+/build/
+
+# Compiled objects and libraries
+*.o
+*.a
+*.dylib
+*.so
+
+# IDE and editor files
+.vscode/
+.idea/
+
+# macOS
+.DS_Store
