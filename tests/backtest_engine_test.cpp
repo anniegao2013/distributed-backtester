@@ -252,6 +252,7 @@ void test_sharpe_ratio_zero_volatility() {
     );
 }
 
+
 void test_open_position_marked_to_market() {
     const std::vector<MarketBar> data{
         make_bar("2020-01-01", 10.0),
@@ -271,7 +272,8 @@ void test_open_position_marked_to_market() {
     const JobResult result = run_backtest(data, strategy, config);
 
     // Buy at the second bar's open ($12).
-    // Final value = $100 * ($15 / $12) = $125.
+    // Final equity = $100 * ($15 / $12) = $125.
+    // Total return = ($125 - $100) / $100 = 25%.
     expect(
         std::abs(result.metrics.total_return - 0.25) < 1e-9,
         "Open position should be valued at the final close"
@@ -282,6 +284,7 @@ void test_open_position_marked_to_market() {
         "Open position should not count as a completed trade"
     );
 }
+
 
 void test_final_bar_signal_not_executed() {
     const std::vector<MarketBar> data{
@@ -403,6 +406,59 @@ void test_pre_range_warmup() {
     );
 }
 
+
+void test_reversed_date_range_throws() {
+    std::vector<MarketBar> dataset = {
+        make_bar("2024-01-01", 100.0),
+        make_bar("2024-01-02", 110.0),
+        make_bar("2024-01-03", 120.0)
+    };
+
+    BuyAndHoldStrategy strategy;
+
+    BacktestConfig config;
+    config.job_id = "test-reversed-range";
+    config.asset = "TEST";
+    config.start_date = "2024-01-03";
+    config.end_date = "2024-01-01";
+
+    bool threw = false;
+
+    try {
+        run_backtest(dataset, strategy, config);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+
+    expect(threw, "Reversed date range should throw");
+}
+
+void test_missing_in_range_data_throws() {
+    std::vector<MarketBar> dataset = {
+        make_bar("2024-01-01", 100.0),
+        make_bar("2024-01-02", 110.0),
+        make_bar("2024-01-03", 120.0)
+    };
+
+    BuyAndHoldStrategy strategy;
+
+    BacktestConfig config;
+    config.job_id = "test-missing-range";
+    config.asset = "TEST";
+    config.start_date = "2024-02-01";
+    config.end_date = "2024-02-10";
+
+    bool threw = false;
+
+    try {
+        run_backtest(dataset, strategy, config);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+
+    expect(threw, "Missing in-range market data should throw");
+}
+
 }  // namespace
 
 int main() {
@@ -418,6 +474,9 @@ int main() {
         test_signal_executes_at_next_open();
 
         test_pre_range_warmup();
+
+        test_reversed_date_range_throws();
+        test_missing_in_range_data_throws();
 
         std::cout << "All backtest engine tests passed.\n";
         return 0;
