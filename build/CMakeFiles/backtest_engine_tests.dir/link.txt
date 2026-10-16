@@ -1,1 +1,0 @@
-/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/backtest_engine_tests.dir/tests/backtest_engine_test.cpp.o CMakeFiles/backtest_engine_tests.dir/src/backtest_engine.cpp.o CMakeFiles/backtest_engine_tests.dir/src/moving_average_crossover.cpp.o CMakeFiles/backtest_engine_tests.dir/src/market_data.cpp.o -o backtest_engine_tests

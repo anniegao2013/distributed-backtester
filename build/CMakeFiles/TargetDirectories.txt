@@ -1,8 +1,0 @@
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/backtester.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/market_data_tests.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/market_data_integration_test.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/moving_average_crossover_tests.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/backtest_engine_tests.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/test.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/edit_cache.dir
-/Users/anniegao/Desktop/side_projects/distributed-backtester/build/CMakeFiles/rebuild_cache.dir

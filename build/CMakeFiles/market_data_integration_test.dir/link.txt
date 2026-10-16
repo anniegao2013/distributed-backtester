@@ -1,1 +1,0 @@
-/usr/bin/c++  -arch arm64 -Wl,-search_paths_first -Wl,-headerpad_max_install_names CMakeFiles/market_data_integration_test.dir/tests/market_data_integration_test.cpp.o CMakeFiles/market_data_integration_test.dir/src/market_data.cpp.o -o market_data_integration_test
