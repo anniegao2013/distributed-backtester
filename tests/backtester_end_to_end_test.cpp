@@ -44,8 +44,8 @@ int main() {
         return 1;
     }
 
-    if (!contains("Running 9 parameter combinations sequentially")) {
-        std::cerr << "Missing: sequential grid execution message\n";
+    if (!contains("Running 9 parameter combinations concurrently")) {
+        std::cerr << "Missing: concurrent grid execution message\n";
         return 1;
     }
 

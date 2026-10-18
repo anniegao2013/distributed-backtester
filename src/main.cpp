@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <future>
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -22,24 +23,43 @@ MovingAverageCrossover make_strategy(const ParameterMap& parameters) {
     return MovingAverageCrossover(short_window, long_window);
 }
 
+// Outcome of running a single parameter combination.
+struct CombinationOutcome {
+    std::size_t index = 0;
+    JobResult result;
+    bool ok = false;
+    std::string error;
+};
+
 // Runs one backtest for a single parameter combination, wiring the
-// combination into the BacktestConfig's parameter map.
-JobResult run_combination(
+// combination into the BacktestConfig's parameter map. Captures exceptions
+// so a single failing combination does not abort the whole grid.
+CombinationOutcome run_combination(
     const std::vector<MarketBar>& dataset,
     const ParameterMap& parameters,
     std::size_t index
 ) {
-    const BacktestConfig config{
-        "grid-" + std::to_string(index),
-        "SP500",
-        "2000-01-01",
-        "2010-12-31",
-        10000.0,
-        parameters
-    };
+    CombinationOutcome outcome;
+    outcome.index = index;
 
-    MovingAverageCrossover strategy = make_strategy(parameters);
-    return run_backtest(dataset, strategy, config);
+    try {
+        const BacktestConfig config{
+            "grid-" + std::to_string(index),
+            "SP500",
+            "2000-01-01",
+            "2010-12-31",
+            10000.0,
+            parameters
+        };
+
+        MovingAverageCrossover strategy = make_strategy(parameters);
+        outcome.result = run_backtest(dataset, strategy, config);
+        outcome.ok = true;
+    } catch (const std::exception& error) {
+        outcome.error = error.what();
+    }
+
+    return outcome;
 }
 
 void print_result(const JobResult& result) {
@@ -171,28 +191,60 @@ int main() {
         // Expand the grid into every concrete parameter combination.
         const auto combinations = generate_parameter_combinations(grid);
         std::cout << "Running " << combinations.size()
-                  << " parameter combinations sequentially.\n";
+                  << " parameter combinations concurrently.\n";
 
-        std::vector<JobResult> results;
-        results.reserve(combinations.size());
+        // Launch one async task per combination. The dataset is read-only
+        // and each task builds its own strategy/config, so combinations are
+        // independent and safe to execute in parallel.
+        std::vector<std::future<CombinationOutcome>> futures;
+        futures.reserve(combinations.size());
 
         std::size_t index = 0;
         for (const auto& parameters : combinations) {
             ++index;
+            futures.push_back(
+                std::async(
+                    std::launch::async,
+                    run_combination,
+                    std::cref(dataset),
+                    parameters,
+                    index
+                )
+            );
+        }
 
-            JobResult result;
-            try {
-                result = run_combination(dataset, parameters, index);
-            } catch (const std::exception& error) {
-                std::cerr << "Combination " << index << " failed: "
-                          << error.what() << '\n';
+        // Collect outcomes in combination order for deterministic output.
+        std::vector<CombinationOutcome> outcomes;
+        outcomes.reserve(futures.size());
+
+        for (auto& future : futures) {
+            outcomes.push_back(future.get());
+        }
+
+        // Sort outcomes by index so output is deterministic regardless of
+        // completion order.
+        std::sort(
+            outcomes.begin(),
+            outcomes.end(),
+            [](const CombinationOutcome& a, const CombinationOutcome& b) {
+                return a.index < b.index;
+            }
+        );
+
+        std::vector<JobResult> results;
+        results.reserve(outcomes.size());
+
+        for (const auto& outcome : outcomes) {
+            if (!outcome.ok) {
+                std::cerr << "Combination " << outcome.index << " failed: "
+                          << outcome.error << '\n';
                 continue;
             }
 
-            results.push_back(result);
+            results.push_back(outcome.result);
 
-            std::cout << "\n--- Result " << index << " ---\n";
-            print_result(result);
+            std::cout << "\n--- Result " << outcome.index << " ---\n";
+            print_result(outcome.result);
         }
 
         std::cout << "\nCompleted " << results.size() << " of "
