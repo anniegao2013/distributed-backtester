@@ -8,7 +8,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Strategy interface:** Interchangeable strategies through a common `on_bar()` interface.
 - **Moving-average crossover:** Example long-only strategy using short- and long-term moving averages.
 - **Backtesting engine:** Simulates trades and tracks portfolio equity over a date range, including warm-up bars.
-- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`.
+- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by hardware concurrency.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, and completed trades.
 - **Automated tests:** Unit, integration, and end-to-end tests.

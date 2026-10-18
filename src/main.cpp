@@ -4,11 +4,13 @@
 #include "parameter_grid.h"
 
 #include <algorithm>
+#include <chrono>
 #include <exception>
 #include <future>
 #include <iostream>
 #include <iomanip>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -181,45 +183,66 @@ int main() {
         std::cout << "First date: " << dataset.front().date << '\n';
         std::cout << "Last date:  " << dataset.back().date << '\n';
 
-        // Define the parameter grid: every value of each parameter is
-        // combined with every value of every other parameter.
+        // Define a large parameter grid so parallel execution shows a
+        // noticeable speed improvement. All short_window values are below
+        // the minimum long_window so every combination is valid.
         const ParameterGrid grid{
-            {"short_window", {10.0, 20.0, 30.0}},
-            {"long_window",  {50.0, 100.0, 200.0}}
+            {"short_window",
+             {10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0,
+              55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0}},
+            {"long_window",
+             {100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0,
+              180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0,
+              260.0, 270.0, 280.0, 290.0, 300.0}}
         };
 
         // Expand the grid into every concrete parameter combination.
         const auto combinations = generate_parameter_combinations(grid);
-        std::cout << "Running " << combinations.size()
-                  << " parameter combinations concurrently.\n";
+        const std::size_t max_concurrent =
+            std::thread::hardware_concurrency();
 
-        // Launch one async task per combination. The dataset is read-only
-        // and each task builds its own strategy/config, so combinations are
-        // independent and safe to execute in parallel.
-        std::vector<std::future<CombinationOutcome>> futures;
-        futures.reserve(combinations.size());
+        std::cout << "Running " << combinations.size()
+                  << " parameter combinations concurrently "
+                  << "(up to " << max_concurrent << " jobs at a time).\n";
+
+        const auto t0 = std::chrono::steady_clock::now();
+
+        // Launch combinations in bounded batches so concurrency never
+        // exceeds hardware capacity. Each task is independent: the dataset
+        // is read-only and each task builds its own strategy/config.
+        std::vector<CombinationOutcome> outcomes;
+        outcomes.reserve(combinations.size());
 
         std::size_t index = 0;
-        for (const auto& parameters : combinations) {
-            ++index;
-            futures.push_back(
-                std::async(
-                    std::launch::async,
-                    run_combination,
-                    std::cref(dataset),
-                    parameters,
-                    index
-                )
-            );
+        auto it = combinations.begin();
+        while (it != combinations.end()) {
+            std::vector<std::future<CombinationOutcome>> batch;
+            batch.reserve(max_concurrent);
+
+            std::size_t batch_size = 0;
+            while (it != combinations.end() && batch_size < max_concurrent) {
+                ++index;
+                batch.push_back(
+                    std::async(
+                        std::launch::async,
+                        run_combination,
+                        std::cref(dataset),
+                        *it,
+                        index
+                    )
+                );
+                ++it;
+                ++batch_size;
+            }
+
+            for (auto& future : batch) {
+                outcomes.push_back(future.get());
+            }
         }
 
-        // Collect outcomes in combination order for deterministic output.
-        std::vector<CombinationOutcome> outcomes;
-        outcomes.reserve(futures.size());
-
-        for (auto& future : futures) {
-            outcomes.push_back(future.get());
-        }
+        const auto t1 = std::chrono::steady_clock::now();
+        const double elapsed_seconds =
+            std::chrono::duration<double>(t1 - t0).count();
 
         // Sort outcomes by index so output is deterministic regardless of
         // completion order.
@@ -248,7 +271,8 @@ int main() {
         }
 
         std::cout << "\nCompleted " << results.size() << " of "
-                  << combinations.size() << " backtests.\n";
+                  << combinations.size() << " backtests in "
+                  << elapsed_seconds << " seconds.\n";
 
         print_ranked_results(results);
 
