@@ -119,3 +119,18 @@ add_test(
     NAME parameter_grid_tests
     COMMAND parameter_grid_tests
 )
+
+# Parameter grid to backtest integration tests
+add_executable(parameter_grid_backtest_integration_test
+    tests/parameter_grid_backtest_integration_test.cpp
+)
+
+target_link_libraries(
+    parameter_grid_backtest_integration_test
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME parameter_grid_backtest_integration_test
+    COMMAND parameter_grid_backtest_integration_test
+)
