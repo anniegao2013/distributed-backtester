@@ -135,6 +135,21 @@ add_test(
     COMMAND parameter_grid_backtest_integration_test
 )
 
+# Parallel execution tests
+add_executable(parallel_execution_tests
+    tests/parallel_execution_test.cpp
+)
+
+target_link_libraries(
+    parallel_execution_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME parallel_execution_tests
+    COMMAND parallel_execution_tests
+)
+
 # End-to-end test: runs the backtester executable against real market data.
 add_executable(backtester_end_to_end_test
     tests/backtester_end_to_end_test.cpp

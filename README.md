@@ -11,7 +11,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by hardware concurrency.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, and completed trades.
-- **Automated tests:** Unit, integration, and end-to-end tests.
+- **Automated tests:** Unit, integration, parallel-execution, and end-to-end tests.
 
 ## Technical Details
 
