@@ -5,11 +5,14 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <exception>
 #include <future>
 #include <iostream>
 #include <iomanip>
+#include <numeric>
 #include <string>
+#include <sys/resource.h>
 #include <thread>
 #include <vector>
 
@@ -31,11 +34,13 @@ struct CombinationOutcome {
     JobResult result;
     bool ok = false;
     std::string error;
+    std::chrono::duration<double> duration{0.0};
 };
 
 // Runs one backtest for a single parameter combination, wiring the
 // combination into the BacktestConfig's parameter map. Captures exceptions
-// so a single failing combination does not abort the whole grid.
+// so a single failing combination does not abort the whole grid, and times
+// the job for latency statistics.
 CombinationOutcome run_combination(
     const std::vector<MarketBar>& dataset,
     const ParameterMap& parameters,
@@ -43,6 +48,8 @@ CombinationOutcome run_combination(
 ) {
     CombinationOutcome outcome;
     outcome.index = index;
+
+    const auto t0 = std::chrono::steady_clock::now();
 
     try {
         const BacktestConfig config{
@@ -61,7 +68,20 @@ CombinationOutcome run_combination(
         outcome.error = error.what();
     }
 
+    const auto t1 = std::chrono::steady_clock::now();
+    outcome.duration = t1 - t0;
+
     return outcome;
+}
+
+// Returns process CPU time (user + system) in seconds.
+double process_cpu_seconds() {
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) != 0) {
+        return 0.0;
+    }
+    return usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6 +
+           usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6;
 }
 
 void print_result(const JobResult& result) {
@@ -170,6 +190,64 @@ void print_ranked_results(const std::vector<JobResult>& results) {
               << ranked.front()->metrics.total_return * 100.0 << "%)\n";
 }
 
+// Prints throughput, latency, CPU utilization, and speedup statistics.
+void print_performance_stats(
+    const std::vector<CombinationOutcome>& outcomes,
+    double wall_seconds,
+    std::size_t max_concurrent
+) {
+    const std::size_t completed = std::count_if(
+        outcomes.begin(),
+        outcomes.end(),
+        [](const CombinationOutcome& o) { return o.ok; }
+    );
+
+    if (completed == 0) {
+        std::cout << "\nNo jobs completed; skipping performance stats.\n";
+        return;
+    }
+
+    // Collect durations of completed jobs.
+    std::vector<double> durations;
+    durations.reserve(completed);
+    for (const auto& outcome : outcomes) {
+        if (outcome.ok) {
+            durations.push_back(outcome.duration.count());
+        }
+    }
+
+    std::sort(durations.begin(), durations.end());
+
+    const double total_work_seconds =
+        std::accumulate(durations.begin(), durations.end(), 0.0);
+    const double mean_latency = total_work_seconds / static_cast<double>(completed);
+    const double min_latency = durations.front();
+    const double max_latency = durations.back();
+    const double median_latency = durations[completed / 2];
+    const double p95_latency =
+        durations[static_cast<std::size_t>(
+            std::ceil(0.95 * static_cast<double>(completed)) - 1)];
+
+    const double throughput =
+        static_cast<double>(completed) / wall_seconds;
+
+    std::cout << std::fixed << std::setprecision(4);
+    std::cout << "Jobs completed:    " << completed << " of " << outcomes.size()
+              << '\n';
+    std::cout << "Max concurrent:    " << max_concurrent << '\n';
+    std::cout << "Wall time:         " << wall_seconds << " s\n";
+    std::cout << "Throughput:        " << throughput << " jobs/s\n";
+    std::cout << "Latency (mean):    " << mean_latency << " s\n";
+    std::cout << "Latency (median):  " << median_latency << " s\n";
+    std::cout << "Latency (min):     " << min_latency << " s\n";
+    std::cout << "Latency (max):     " << max_latency << " s\n";
+    std::cout << "Latency (p95):     " << p95_latency << " s\n";
+    std::cout << "Total work:        " << total_work_seconds << " CPU-s\n";
+    std::cout << "Speedup:           "
+              << (wall_seconds > 0.0 ? total_work_seconds / wall_seconds : 0.0)
+              << "x\n";
+}
+
 }  // namespace
 
 int main() {
@@ -205,6 +283,7 @@ int main() {
                   << " parameter combinations concurrently "
                   << "(up to " << max_concurrent << " jobs at a time).\n";
 
+        const double cpu_start = process_cpu_seconds();
         const auto t0 = std::chrono::steady_clock::now();
 
         // Launch combinations in bounded batches so concurrency never
@@ -241,8 +320,11 @@ int main() {
         }
 
         const auto t1 = std::chrono::steady_clock::now();
-        const double elapsed_seconds =
+        const double cpu_end = process_cpu_seconds();
+
+        const double wall_seconds =
             std::chrono::duration<double>(t1 - t0).count();
+        const double cpu_seconds = cpu_end - cpu_start;
 
         // Sort outcomes by index so output is deterministic regardless of
         // completion order.
@@ -272,9 +354,24 @@ int main() {
 
         std::cout << "\nCompleted " << results.size() << " of "
                   << combinations.size() << " backtests in "
-                  << elapsed_seconds << " seconds.\n";
+                  << wall_seconds << " seconds.\n";
 
         print_ranked_results(results);
+        print_performance_stats(outcomes, wall_seconds, max_concurrent);
+
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "CPU time:          " << cpu_seconds << " s\n";
+        std::cout << "CPU utilization:   "
+                  << (wall_seconds > 0.0
+                          ? (cpu_seconds / wall_seconds) * 100.0
+                          : 0.0)
+                  << "% of one core\n";
+        std::cout << "CPU efficiency:    "
+                  << (wall_seconds > 0.0 && max_concurrent > 0
+                          ? (cpu_seconds / wall_seconds /
+                             static_cast<double>(max_concurrent)) * 100.0
+                          : 0.0)
+                  << "%\n";
 
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
