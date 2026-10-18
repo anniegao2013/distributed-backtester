@@ -29,6 +29,7 @@ add_library(backtester_core
     src/moving_average_crossover.cpp
     src/backtest_engine.cpp
     src/parameter_grid.cpp
+    src/performance_stats.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include)
@@ -133,6 +134,21 @@ target_link_libraries(
 add_test(
     NAME parameter_grid_backtest_integration_test
     COMMAND parameter_grid_backtest_integration_test
+)
+
+# Performance stats unit tests
+add_executable(performance_stats_tests
+    tests/performance_stats_test.cpp
+)
+
+target_link_libraries(
+    performance_stats_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME performance_stats_tests
+    COMMAND performance_stats_tests
 )
 
 # Parallel execution tests

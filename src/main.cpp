@@ -2,6 +2,7 @@
 #include "moving_average_crossover.h"
 #include "backtest_engine.h"
 #include "parameter_grid.h"
+#include "performance_stats.h"
 
 #include <algorithm>
 #include <chrono>
@@ -28,8 +29,8 @@ MovingAverageCrossover make_strategy(const ParameterMap& parameters) {
     return MovingAverageCrossover(short_window, long_window);
 }
 
-// Outcome of running a single parameter combination.
-struct CombinationOutcome {
+// Outcome of running a single parameter combination, carrying the JobResult.
+struct JobOutcome {
     std::size_t index = 0;
     JobResult result;
     bool ok = false;
@@ -41,12 +42,12 @@ struct CombinationOutcome {
 // combination into the BacktestConfig's parameter map. Captures exceptions
 // so a single failing combination does not abort the whole grid, and times
 // the job for latency statistics.
-CombinationOutcome run_combination(
+JobOutcome run_combination(
     const std::vector<MarketBar>& dataset,
     const ParameterMap& parameters,
     std::size_t index
 ) {
-    CombinationOutcome outcome;
+    JobOutcome outcome;
     outcome.index = index;
 
     const auto t0 = std::chrono::steady_clock::now();
@@ -190,62 +191,30 @@ void print_ranked_results(const std::vector<JobResult>& results) {
               << ranked.front()->metrics.total_return * 100.0 << "%)\n";
 }
 
-// Prints throughput, latency, CPU utilization, and speedup statistics.
-void print_performance_stats(
-    const std::vector<CombinationOutcome>& outcomes,
-    double wall_seconds,
-    std::size_t max_concurrent
-) {
-    const std::size_t completed = std::count_if(
-        outcomes.begin(),
-        outcomes.end(),
-        [](const CombinationOutcome& o) { return o.ok; }
-    );
-
-    if (completed == 0) {
+// Prints a PerformanceStats report to stdout.
+void print_performance_stats(const PerformanceStats& stats) {
+    if (stats.jobs_completed == 0) {
         std::cout << "\nNo jobs completed; skipping performance stats.\n";
         return;
     }
 
-    // Collect durations of completed jobs.
-    std::vector<double> durations;
-    durations.reserve(completed);
-    for (const auto& outcome : outcomes) {
-        if (outcome.ok) {
-            durations.push_back(outcome.duration.count());
-        }
-    }
-
-    std::sort(durations.begin(), durations.end());
-
-    const double total_work_seconds =
-        std::accumulate(durations.begin(), durations.end(), 0.0);
-    const double mean_latency = total_work_seconds / static_cast<double>(completed);
-    const double min_latency = durations.front();
-    const double max_latency = durations.back();
-    const double median_latency = durations[completed / 2];
-    const double p95_latency =
-        durations[static_cast<std::size_t>(
-            std::ceil(0.95 * static_cast<double>(completed)) - 1)];
-
-    const double throughput =
-        static_cast<double>(completed) / wall_seconds;
-
+    std::cout << "\n=== Performance Stats ===\n";
     std::cout << std::fixed << std::setprecision(4);
-    std::cout << "Jobs completed:    " << completed << " of " << outcomes.size()
-              << '\n';
-    std::cout << "Max concurrent:    " << max_concurrent << '\n';
-    std::cout << "Wall time:         " << wall_seconds << " s\n";
-    std::cout << "Throughput:        " << throughput << " jobs/s\n";
-    std::cout << "Latency (mean):    " << mean_latency << " s\n";
-    std::cout << "Latency (median):  " << median_latency << " s\n";
-    std::cout << "Latency (min):     " << min_latency << " s\n";
-    std::cout << "Latency (max):     " << max_latency << " s\n";
-    std::cout << "Latency (p95):     " << p95_latency << " s\n";
-    std::cout << "Total work:        " << total_work_seconds << " CPU-s\n";
-    std::cout << "Speedup:           "
-              << (wall_seconds > 0.0 ? total_work_seconds / wall_seconds : 0.0)
-              << "x\n";
+    std::cout << "Jobs completed:    " << stats.jobs_completed << " of "
+              << stats.jobs_total << '\n';
+    std::cout << "Max concurrent:    " << stats.max_concurrent << '\n';
+    std::cout << "Wall time:         " << stats.wall_seconds << " s\n";
+    std::cout << "Throughput:        " << stats.throughput << " jobs/s\n";
+    std::cout << "Latency (mean):    " << stats.mean_latency << " s\n";
+    std::cout << "Latency (median):  " << stats.median_latency << " s\n";
+    std::cout << "Latency (min):     " << stats.min_latency << " s\n";
+    std::cout << "Latency (max):     " << stats.max_latency << " s\n";
+    std::cout << "Latency (p95):     " << stats.p95_latency << " s\n";
+    std::cout << "Total work:        " << stats.total_work_seconds << " CPU-s\n";
+    std::cout << "Speedup:           " << stats.speedup << "x\n";
+    std::cout << "CPU time:          " << stats.cpu_seconds << " s\n";
+    std::cout << "CPU utilization:   " << stats.cpu_utilization << "% of one core\n";
+    std::cout << "CPU efficiency:    " << stats.cpu_efficiency << "%\n";
 }
 
 }  // namespace
@@ -289,13 +258,13 @@ int main() {
         // Launch combinations in bounded batches so concurrency never
         // exceeds hardware capacity. Each task is independent: the dataset
         // is read-only and each task builds its own strategy/config.
-        std::vector<CombinationOutcome> outcomes;
+        std::vector<JobOutcome> outcomes;
         outcomes.reserve(combinations.size());
 
         std::size_t index = 0;
         auto it = combinations.begin();
         while (it != combinations.end()) {
-            std::vector<std::future<CombinationOutcome>> batch;
+            std::vector<std::future<JobOutcome>> batch;
             batch.reserve(max_concurrent);
 
             std::size_t batch_size = 0;
@@ -331,7 +300,7 @@ int main() {
         std::sort(
             outcomes.begin(),
             outcomes.end(),
-            [](const CombinationOutcome& a, const CombinationOutcome& b) {
+            [](const JobOutcome& a, const JobOutcome& b) {
                 return a.index < b.index;
             }
         );
@@ -357,21 +326,28 @@ int main() {
                   << wall_seconds << " seconds.\n";
 
         print_ranked_results(results);
-        print_performance_stats(outcomes, wall_seconds, max_concurrent);
 
-        std::cout << std::fixed << std::setprecision(2);
-        std::cout << "CPU time:          " << cpu_seconds << " s\n";
-        std::cout << "CPU utilization:   "
-                  << (wall_seconds > 0.0
-                          ? (cpu_seconds / wall_seconds) * 100.0
-                          : 0.0)
-                  << "% of one core\n";
-        std::cout << "CPU efficiency:    "
-                  << (wall_seconds > 0.0 && max_concurrent > 0
-                          ? (cpu_seconds / wall_seconds /
-                             static_cast<double>(max_concurrent)) * 100.0
-                          : 0.0)
-                  << "%\n";
+        // Convert to stats-compatible outcomes and compute performance stats.
+        std::vector<CombinationOutcome> stat_outcomes;
+        stat_outcomes.reserve(outcomes.size());
+        for (const auto& outcome : outcomes) {
+            stat_outcomes.push_back(
+                {
+                    outcome.index,
+                    outcome.ok,
+                    outcome.duration.count()
+                }
+            );
+        }
+
+        const PerformanceStats stats = compute_performance_stats(
+            stat_outcomes,
+            wall_seconds,
+            cpu_seconds,
+            max_concurrent
+        );
+
+        print_performance_stats(stats);
 
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
