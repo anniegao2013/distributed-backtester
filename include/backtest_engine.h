@@ -2,6 +2,7 @@
 
 #include "market_data.h"
 #include "strategy.h"
+#include "parameter_types.h"
 
 #include <cstddef>
 #include <map>
@@ -11,11 +12,10 @@
 struct BacktestConfig {
     std::string job_id;
     std::string asset;
-    std::string start_date;  // Inclusive: YYYY-MM-DD
-    std::string end_date;    // Inclusive: YYYY-MM-DD
-
+    std::string start_date;
+    std::string end_date;
     double initial_cash = 10000.0;
-    std::map<std::string, double> parameters;
+    ParameterMap parameters;
 };
 
 struct BacktestMetrics {
@@ -28,7 +28,7 @@ struct BacktestMetrics {
 struct JobResult {
     std::string job_id;
     std::string asset;
-    std::map<std::string, double> parameters;
+    ParameterMap parameters;
     BacktestMetrics metrics;
 };
 
