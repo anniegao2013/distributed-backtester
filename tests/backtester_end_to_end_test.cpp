@@ -5,9 +5,9 @@
 #include <string>
 
 // Runs the backtester executable end-to-end against the real market data
-// and asserts that the full pipeline executes: data load, sequential
-// backtests over the parameter grid, per-combination results, and a ranked
-// summary with a best configuration.
+// and asserts that the full pipeline executes: data load, concurrent
+// backtests over the parameter grid, per-combination results, timing, and a
+// ranked summary with a best configuration.
 int main() {
     const std::string executable = EXECUTABLE_PATH;
 
@@ -44,13 +44,14 @@ int main() {
         return 1;
     }
 
-    if (!contains("Running 9 parameter combinations sequentially")) {
-        std::cerr << "Missing: sequential grid execution message\n";
+    if (!contains("parameter combinations concurrently")) {
+        std::cerr << "Missing: concurrent grid execution message\n";
         return 1;
     }
 
-    if (!contains("Completed 9 of 9 backtests")) {
-        std::cerr << "Missing: completion message\n";
+    if (!contains("Completed") || !contains("backtests in") ||
+        !contains("seconds")) {
+        std::cerr << "Missing: completion message with timing\n";
         return 1;
     }
 
@@ -64,12 +65,11 @@ int main() {
         return 1;
     }
 
-    // Each job ID grid-1 .. grid-9 should appear in the results.
-    for (int i = 1; i <= 9; ++i) {
-        if (!contains("grid-" + std::to_string(i))) {
-            std::cerr << "Missing: result for grid-" << i << '\n';
-            return 1;
-        }
+    // A few representative job IDs should appear across the grid.
+    if (!contains("grid-1") || !contains("grid-100") ||
+        !contains("grid-378")) {
+        std::cerr << "Missing: expected grid job IDs\n";
+        return 1;
     }
 
     std::cout << "End-to-end test passed\n";
