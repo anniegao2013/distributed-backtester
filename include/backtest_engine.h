@@ -16,6 +16,8 @@ struct BacktestConfig {
     std::string end_date;
     double initial_cash = 10000.0;
     ParameterMap parameters;
+    double commission_rate = 0.0005;
+    double slippage_rate = 0.001;
 };
 
 struct BacktestMetrics {
@@ -23,6 +25,8 @@ struct BacktestMetrics {
     double sharpe_ratio = 0.0;
     double max_drawdown = 0.0;
     std::size_t number_of_trades = 0;
+    double total_commission = 0.0;
+    double total_slippage = 0.0;
 };
 
 struct JobResult {
