@@ -107,6 +107,21 @@ JobResult run_backtest(
         );
     }
 
+    if (!std::isfinite(config.commission_rate) ||
+        config.commission_rate < 0.0) {
+        throw std::invalid_argument(
+            "Commission rate must be finite and nonnegative"
+        );
+    }
+
+    if (!std::isfinite(config.slippage_rate) ||
+        config.slippage_rate < 0.0 ||
+        config.slippage_rate >= 1.0) {
+        throw std::invalid_argument(
+            "Slippage rate must be finite and in [0, 1)"
+        );
+    }
+
     // Keep all bars up to the end date, including pre-range warm-up bars.
     // This relies on the dataset being sorted by date.
     std::vector<MarketBar> bars;
@@ -147,6 +162,8 @@ JobResult run_backtest(
     double cash = config.initial_cash;
     double shares = 0.0;
     std::size_t completed_trades = 0;
+    double total_commission = 0.0;
+    double total_slippage = 0.0;
 
     Signal pending_signal = Signal::Hold;
 
@@ -169,12 +186,35 @@ JobResult run_backtest(
 
         // Execute the previous in-range bar's signal at today's open.
         if (pending_signal == Signal::Buy && shares == 0.0) {
-            shares = cash / bar.open;
-            cash = 0.0;
+            const double execution_price =
+                bar.open * (1.0 + config.slippage_rate);
+            const double cost_per_share =
+                execution_price * (1.0 + config.commission_rate);
+
+            // Size the position so purchase cost plus commission fits cash.
+            shares = cash / cost_per_share;
+            const double traded_notional = shares * execution_price;
+            const double commission =
+                traded_notional * config.commission_rate;
+            total_commission += commission;
+            total_slippage += shares * (execution_price - bar.open);
+            cash -= traded_notional + commission;
+
+            // Avoid tiny negative balances caused by floating-point rounding.
+            if (cash < 0.0 && cash > -1e-9 * config.initial_cash) {
+                cash = 0.0;
+            }
         } else if (
             pending_signal == Signal::Sell && shares > 0.0
         ) {
-            cash += shares * bar.open;
+            const double execution_price =
+                bar.open * (1.0 - config.slippage_rate);
+            const double traded_notional = shares * execution_price;
+            const double commission =
+                traded_notional * config.commission_rate;
+            cash += traded_notional - commission;
+            total_commission += commission;
+            total_slippage += shares * (bar.open - execution_price);
             shares = 0.0;
             ++completed_trades;
         }
@@ -208,6 +248,8 @@ JobResult run_backtest(
         calculate_max_drawdown(equity_curve, config.initial_cash);
 
     result.metrics.number_of_trades = completed_trades;
+    result.metrics.total_commission = total_commission;
+    result.metrics.total_slippage = total_slippage;
 
     return result;
 }
