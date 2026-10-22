@@ -104,6 +104,8 @@ void print_result(const JobResult& result) {
               << result.metrics.max_drawdown * 100.0 << "%\n";
     std::cout << "  Number of trades: "
               << result.metrics.number_of_trades << '\n';
+    std::cout << "  Total commission: $" << result.metrics.total_commission << '\n';
+    std::cout << "  Total slippage: $" << result.metrics.total_slippage << '\n';
 }
 
 // Ranks results by Sharpe ratio (highest first) and prints a summary table.
