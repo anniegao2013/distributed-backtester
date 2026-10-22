@@ -459,11 +459,81 @@ void test_missing_in_range_data_throws() {
     expect(threw, "Missing in-range market data should throw");
 }
 
+
+void test_transaction_costs_and_slippage() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 10.0),
+        make_bar("2020-01-03", 10.0),
+        make_bar("2020-01-04", 10.0)
+    };
+
+    BacktestConfig config{
+        "costs-test", "TEST", "2020-01-01", "2020-01-04", 100.0, {}
+    };
+    config.commission_rate = 0.01;
+    config.slippage_rate = 0.02;
+
+    TestStrategy strategy;
+    const JobResult result = run_backtest(data, strategy, config);
+
+    const double buy_price = 10.0 * 1.02;
+    const double buy_shares = 100.0 / (buy_price * 1.01);
+    const double sell_price = 10.0 * 0.98;
+    const double sell_notional = buy_shares * sell_price;
+    const double sell_commission = sell_notional * 0.01;
+    const double expected_return =
+        (sell_notional - sell_commission) / 100.0 - 1.0;
+    const double expected_commission =
+        buy_shares * buy_price * 0.01 + sell_commission;
+    const double expected_slippage =
+        buy_shares * (buy_price - 10.0) +
+        buy_shares * (10.0 - sell_price);
+
+    expect(std::abs(result.metrics.total_return - expected_return) < 1e-9,
+           "Returns should reflect entry/exit costs");
+    expect(std::abs(result.metrics.total_commission - expected_commission) < 1e-9,
+           "Commission should be charged on entry and exit");
+    expect(std::abs(result.metrics.total_slippage - expected_slippage) < 1e-9,
+           "Slippage should be reported on entry and exit");
+}
+
+void test_invalid_cost_rates_throw() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0), make_bar("2020-01-02", 10.0)
+    };
+    BacktestConfig config{
+        "invalid-cost-test", "TEST", "2020-01-01", "2020-01-02", 100.0, {}
+    };
+    BuyAndHoldStrategy strategy;
+
+    config.commission_rate = -0.01;
+    bool commission_threw = false;
+    try {
+        (void)run_backtest(data, strategy, config);
+    } catch (const std::invalid_argument&) {
+        commission_threw = true;
+    }
+    expect(commission_threw, "Negative commission rate should throw");
+
+    config.commission_rate = 0.0;
+    config.slippage_rate = 1.0;
+    bool slippage_threw = false;
+    try {
+        (void)run_backtest(data, strategy, config);
+    } catch (const std::invalid_argument&) {
+        slippage_threw = true;
+    }
+    expect(slippage_threw, "Slippage rate >= 1 should throw");
+}
+
 }  // namespace
 
 int main() {
     try {
         test_buy_sell_accounting();
+        test_transaction_costs_and_slippage();
+        test_invalid_cost_rates_throw();
         test_empty_date_range_throws();
 
         test_max_drawdown();
