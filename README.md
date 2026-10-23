@@ -11,7 +11,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by hardware concurrency.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
-- **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, and completed trades.
+- **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed trades, and total trading costs.
 - **Automated tests:** Unit, integration, parallel-execution, and end-to-end tests.
 
 ## Technical Details
@@ -19,8 +19,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Language:** C++17
 - **Build system:** CMake
 - **Data:** Daily S&P 500 index OHLCV data (1950–2018)
-- **Execution:** Signals generated at a bar's close execute at the next bar's open.
-- **Trading model:** Long-only, fractional shares, no transaction costs or slippage. Open positions are marked to market at the final close.
+- **Trading model:** Long-only, fractional shares. Signals generated at a bar's close execute at the next bar's open, with configurable commission (`transaction_cost_rate`) charged on traded notional and adverse slippage (`slippage_rate`) applied to each fill. Open positions are marked to market at the final close.
 
 ## Build and Test
 

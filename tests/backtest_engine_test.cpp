@@ -164,6 +164,33 @@ private:
     std::size_t signal_bar_;
 };
 
+// Buys after one bar's close and sells after another, producing a single
+// completed round trip.
+class RoundTripStrategy final : public Strategy {
+public:
+    RoundTripStrategy(std::size_t buy_bar, std::size_t sell_bar)
+        : buy_bar_(buy_bar), sell_bar_(sell_bar) {}
+
+    Signal on_bar(
+        const std::vector<MarketBar>& history,
+        bool has_position
+    ) override {
+        if (history.size() == buy_bar_ && !has_position) {
+            return Signal::Buy;
+        }
+
+        if (history.size() == sell_bar_ && has_position) {
+            return Signal::Sell;
+        }
+
+        return Signal::Hold;
+    }
+
+private:
+    std::size_t buy_bar_;
+    std::size_t sell_bar_;
+};
+
 void test_max_drawdown() {
     const std::vector<MarketBar> data{
         make_bar("2020-01-01", 10.0),
@@ -358,6 +385,165 @@ void test_signal_executes_at_next_open() {
     );
 }
 
+void test_transaction_costs_reduce_returns() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 10.0),
+        make_bar("2020-01-03", 14.0)
+    };
+
+    BacktestConfig config{
+        "transaction-cost-test",
+        "TEST",
+        "2020-01-01",
+        "2020-01-03",
+        100.0,
+        {}
+    };
+    config.transaction_cost_rate = 0.01;
+
+    RoundTripStrategy strategy(1, 2);
+    const JobResult result = run_backtest(data, strategy, config);
+
+    // Buy at $10 with a 1% commission: shares = 100 / (10 * 1.01).
+    // Sell at $14 with a 1% commission.
+    const double shares = 100.0 / (10.0 * 1.01);
+    const double final_cash = shares * 14.0 * (1.0 - 0.01);
+    const double expected_return = final_cash / 100.0 - 1.0;
+    const double expected_costs =
+        shares * 10.0 * 0.01 + shares * 14.0 * 0.01;
+
+    expect(
+        std::abs(result.metrics.total_return - expected_return) < 1e-9,
+        "Incorrect total return with transaction costs"
+    );
+    expect(
+        std::abs(result.metrics.total_costs - expected_costs) < 1e-9,
+        "Incorrect total transaction costs"
+    );
+    expect(
+        result.metrics.number_of_trades == 1,
+        "Transaction costs should not change the trade count"
+    );
+}
+
+void test_slippage_reduces_returns() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 10.0),
+        make_bar("2020-01-03", 14.0)
+    };
+
+    BacktestConfig config{
+        "slippage-test",
+        "TEST",
+        "2020-01-01",
+        "2020-01-03",
+        100.0,
+        {}
+    };
+    config.slippage_rate = 0.01;
+
+    RoundTripStrategy strategy(1, 2);
+    const JobResult result = run_backtest(data, strategy, config);
+
+    // Buy fills 1% above $10, sell fills 1% below $14.
+    const double buy_fill = 10.0 * 1.01;
+    const double sell_fill = 14.0 * 0.99;
+    const double shares = 100.0 / buy_fill;
+    const double expected_return = shares * sell_fill / 100.0 - 1.0;
+    const double expected_costs =
+        shares * (buy_fill - 10.0) + shares * (14.0 - sell_fill);
+
+    expect(
+        std::abs(result.metrics.total_return - expected_return) < 1e-9,
+        "Incorrect total return with slippage"
+    );
+    expect(
+        std::abs(result.metrics.total_costs - expected_costs) < 1e-9,
+        "Incorrect total slippage costs"
+    );
+}
+
+void test_combined_costs_match_manual_accounting() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 10.0),
+        make_bar("2020-01-03", 14.0)
+    };
+
+    BacktestConfig config{
+        "combined-cost-test",
+        "TEST",
+        "2020-01-01",
+        "2020-01-03",
+        100.0,
+        {}
+    };
+    config.transaction_cost_rate = 0.01;
+    config.slippage_rate = 0.01;
+
+    RoundTripStrategy strategy(1, 2);
+    const JobResult result = run_backtest(data, strategy, config);
+
+    const double buy_fill = 10.0 * 1.01;
+    const double sell_fill = 14.0 * 0.99;
+    const double shares = 100.0 / (buy_fill * 1.01);
+    const double final_cash =
+        shares * sell_fill * (1.0 - 0.01);
+    const double expected_return = final_cash / 100.0 - 1.0;
+
+    expect(
+        std::abs(result.metrics.total_return - expected_return) < 1e-9,
+        "Incorrect total return with combined costs"
+    );
+    expect(
+        result.metrics.total_costs > 0.0,
+        "Combined costs should be positive"
+    );
+}
+
+void test_invalid_cost_rates_throw() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 10.0)
+    };
+
+    auto run_with_rates = [&data](
+        double transaction_cost_rate,
+        double slippage_rate
+    ) {
+        BacktestConfig config{
+            "invalid-cost-test",
+            "TEST",
+            "2020-01-01",
+            "2020-01-02",
+            100.0,
+            {}
+        };
+        config.transaction_cost_rate = transaction_cost_rate;
+        config.slippage_rate = slippage_rate;
+
+        BuyAndHoldStrategy strategy;
+        (void)run_backtest(data, strategy, config);
+    };
+
+    auto expect_throws = [&run_with_rates](double tc, double slip) {
+        bool threw = false;
+        try {
+            run_with_rates(tc, slip);
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        expect(threw, "Invalid cost rate should throw");
+    };
+
+    expect_throws(-0.01, 0.0);
+    expect_throws(0.0, -0.01);
+    expect_throws(1.0, 0.0);
+    expect_throws(0.0, 1.0);
+}
+
 void test_pre_range_warmup() {
     const std::vector<MarketBar> data{
         make_bar("2020-01-01", 10.0),
@@ -472,6 +658,11 @@ int main() {
         test_open_position_marked_to_market();
         test_final_bar_signal_not_executed();
         test_signal_executes_at_next_open();
+
+        test_transaction_costs_reduce_returns();
+        test_slippage_reduces_returns();
+        test_combined_costs_match_manual_accounting();
+        test_invalid_cost_rates_throw();
 
         test_pre_range_warmup();
 

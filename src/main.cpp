@@ -59,7 +59,9 @@ JobOutcome run_combination(
             "2000-01-01",
             "2010-12-31",
             10000.0,
-            parameters
+            parameters,
+            0.001,   // 10 bps commission on traded notional
+            0.0005   // 5 bps adverse slippage on each fill
         };
 
         MovingAverageCrossover strategy = make_strategy(parameters);
@@ -104,6 +106,8 @@ void print_result(const JobResult& result) {
               << result.metrics.max_drawdown * 100.0 << "%\n";
     std::cout << "  Number of trades: "
               << result.metrics.number_of_trades << '\n';
+    std::cout << "  Total costs: $"
+              << result.metrics.total_costs << '\n';
 }
 
 // Ranks results by Sharpe ratio (highest first) and prints a summary table.
@@ -135,7 +139,7 @@ void print_ranked_results(const std::vector<JobResult>& results) {
     std::cout << "\n=== Ranked Results (by Sharpe ratio) ===\n";
     std::cout << std::left << std::setw(6) << "Rank"
               << std::setw(10) << "Job ID"
-              << "Sharpe\tTotal Return\tMax Drawdown\tTrades\tParameters\n";
+              << "Sharpe\tTotal Return\tMax Drawdown\tCosts\tTrades\tParameters\n";
 
     std::size_t rank = 0;
     for (std::size_t i = 0; i < ranked.size(); ++i) {
@@ -166,6 +170,9 @@ void print_ranked_results(const std::vector<JobResult>& results) {
                   << "\t"
                   << std::fixed << std::setprecision(4)
                   << result.metrics.max_drawdown * 100.0 << "%"
+                  << "\t"
+                  << std::fixed << std::setprecision(2)
+                  << result.metrics.total_costs
                   << "\t"
                   << std::fixed << std::setprecision(0)
                   << result.metrics.number_of_trades

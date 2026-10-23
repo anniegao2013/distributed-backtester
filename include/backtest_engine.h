@@ -16,6 +16,15 @@ struct BacktestConfig {
     std::string end_date;
     double initial_cash = 10000.0;
     ParameterMap parameters;
+
+    // Commission charged on each executed order, as a fraction of the
+    // traded notional (0.001 = 10 basis points).
+    double transaction_cost_rate = 0.0;
+
+    // Adverse price movement applied to each fill, as a fraction of the
+    // bar's open price (0.0005 = 5 basis points). Buys fill above the open
+    // and sells fill below it.
+    double slippage_rate = 0.0;
 };
 
 struct BacktestMetrics {
@@ -23,6 +32,9 @@ struct BacktestMetrics {
     double sharpe_ratio = 0.0;
     double max_drawdown = 0.0;
     std::size_t number_of_trades = 0;
+
+    // Total commission plus slippage incurred, in cash terms.
+    double total_costs = 0.0;
 };
 
 struct JobResult {

@@ -107,6 +107,22 @@ JobResult run_backtest(
         );
     }
 
+    if (!std::isfinite(config.transaction_cost_rate) ||
+        config.transaction_cost_rate < 0.0 ||
+        config.transaction_cost_rate >= 1.0) {
+        throw std::invalid_argument(
+            "Transaction cost rate must be in [0, 1)"
+        );
+    }
+
+    if (!std::isfinite(config.slippage_rate) ||
+        config.slippage_rate < 0.0 ||
+        config.slippage_rate >= 1.0) {
+        throw std::invalid_argument(
+            "Slippage rate must be in [0, 1)"
+        );
+    }
+
     // Keep all bars up to the end date, including pre-range warm-up bars.
     // This relies on the dataset being sorted by date.
     std::vector<MarketBar> bars;
@@ -147,6 +163,7 @@ JobResult run_backtest(
     double cash = config.initial_cash;
     double shares = 0.0;
     std::size_t completed_trades = 0;
+    double total_costs = 0.0;
 
     Signal pending_signal = Signal::Hold;
 
@@ -168,13 +185,31 @@ JobResult run_backtest(
         const MarketBar& bar = bars[i];
 
         // Execute the previous in-range bar's signal at today's open.
+        // Slippage moves the fill price against us, and commission is
+        // charged on the traded notional.
         if (pending_signal == Signal::Buy && shares == 0.0) {
-            shares = cash / bar.open;
+            const double fill_price =
+                bar.open * (1.0 + config.slippage_rate);
+            const double cost_per_share =
+                fill_price * (1.0 + config.transaction_cost_rate);
+
+            shares = cash / cost_per_share;
+            total_costs += shares * (fill_price - bar.open);
+            total_costs +=
+                shares * fill_price * config.transaction_cost_rate;
             cash = 0.0;
         } else if (
             pending_signal == Signal::Sell && shares > 0.0
         ) {
-            cash += shares * bar.open;
+            const double fill_price =
+                bar.open * (1.0 - config.slippage_rate);
+            const double notional = shares * fill_price;
+
+            total_costs += shares * (bar.open - fill_price);
+            total_costs +=
+                notional * config.transaction_cost_rate;
+
+            cash += notional * (1.0 - config.transaction_cost_rate);
             shares = 0.0;
             ++completed_trades;
         }
@@ -208,6 +243,7 @@ JobResult run_backtest(
         calculate_max_drawdown(equity_curve, config.initial_cash);
 
     result.metrics.number_of_trades = completed_trades;
+    result.metrics.total_costs = total_costs;
 
     return result;
 }
