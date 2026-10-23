@@ -1,9 +1,12 @@
 #include "backtest_engine.h"
 
+#include "portfolio.h"
+
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -107,21 +110,11 @@ JobResult run_backtest(
         );
     }
 
-    if (!std::isfinite(config.transaction_cost_rate) ||
-        config.transaction_cost_rate < 0.0 ||
-        config.transaction_cost_rate >= 1.0) {
-        throw std::invalid_argument(
-            "Transaction cost rate must be in [0, 1)"
-        );
-    }
-
-    if (!std::isfinite(config.slippage_rate) ||
-        config.slippage_rate < 0.0 ||
-        config.slippage_rate >= 1.0) {
-        throw std::invalid_argument(
-            "Slippage rate must be in [0, 1)"
-        );
-    }
+    const ExecutionConfig execution{
+        config.transaction_cost_rate,
+        config.slippage_rate
+    };
+    validate_execution_config(execution);
 
     // Keep all bars up to the end date, including pre-range warm-up bars.
     // This relies on the dataset being sorted by date.
@@ -160,12 +153,15 @@ JobResult run_backtest(
         );
     }
 
-    double cash = config.initial_cash;
-    double shares = 0.0;
+    Portfolio portfolio(config.initial_cash);
     std::size_t completed_trades = 0;
     double total_costs = 0.0;
 
+    // The strategy expresses intent with a Signal. The engine turns that
+    // intent into an Order, fills it into a Trade, and applies the Trade to
+    // the portfolio at the next bar's open.
     Signal pending_signal = Signal::Hold;
+    std::vector<Trade> executed_trades;
 
     std::vector<MarketBar> history;
     history.reserve(bars.size());
@@ -185,45 +181,44 @@ JobResult run_backtest(
         const MarketBar& bar = bars[i];
 
         // Execute the previous in-range bar's signal at today's open.
-        // Slippage moves the fill price against us, and commission is
-        // charged on the traded notional.
-        if (pending_signal == Signal::Buy && shares == 0.0) {
-            const double fill_price =
-                bar.open * (1.0 + config.slippage_rate);
-            const double cost_per_share =
-                fill_price * (1.0 + config.transaction_cost_rate);
+        // Signals are only intent: the engine decides order size, fill
+        // price, commission, and how the portfolio changes.
+        const auto order = create_order(
+            pending_signal,
+            portfolio,
+            config.asset,
+            bar.open,
+            execution
+        );
 
-            shares = cash / cost_per_share;
-            total_costs += shares * (fill_price - bar.open);
-            total_costs +=
-                shares * fill_price * config.transaction_cost_rate;
-            cash = 0.0;
-        } else if (
-            pending_signal == Signal::Sell && shares > 0.0
-        ) {
-            const double fill_price =
-                bar.open * (1.0 - config.slippage_rate);
-            const double notional = shares * fill_price;
+        if (order.has_value()) {
+            const Trade trade =
+                execute_order(*order, bar.open, execution);
 
-            total_costs += shares * (bar.open - fill_price);
-            total_costs +=
-                notional * config.transaction_cost_rate;
+            apply_trade(portfolio, trade);
 
-            cash += notional * (1.0 - config.transaction_cost_rate);
-            shares = 0.0;
-            ++completed_trades;
+            total_costs += trade.commission + trade.slippage_cost;
+
+            if (trade.side == OrderSide::Sell) {
+                ++completed_trades;
+            }
+
+            executed_trades.push_back(trade);
         }
 
         // Add today's bar. The strategy sees warm-up bars plus
         // all completed bars through today's close.
         history.push_back(bar);
 
-        // Record equity only for bars inside the requested range.
-        const double equity = cash + shares * bar.close;
+        // Record equity only for bars inside the requested range. Equity is
+        // cash plus the mark-to-market value of every owned position.
+        const double equity =
+            portfolio.equity({{config.asset, bar.close}});
         equity_curve.push_back(equity);
 
         // Today's signal can execute only at the next bar's open.
-        pending_signal = strategy.on_bar(history, shares > 0.0);
+        pending_signal =
+            strategy.on_bar(history, portfolio.owns(config.asset));
     }
 
     const double final_equity = equity_curve.back();
@@ -244,6 +239,7 @@ JobResult run_backtest(
 
     result.metrics.number_of_trades = completed_trades;
     result.metrics.total_costs = total_costs;
+    result.trades = std::move(executed_trades);
 
     return result;
 }

@@ -84,6 +84,50 @@ void test_buy_sell_accounting() {
     );
 }
 
+void test_executions_are_recorded_as_trades() {
+    const std::vector<MarketBar> data{
+        make_bar("2020-01-01", 10.0),
+        make_bar("2020-01-02", 12.0),
+        make_bar("2020-01-03", 13.0),
+        make_bar("2020-01-04", 14.0)
+    };
+
+    const BacktestConfig config{
+        "trade-recording-test",
+        "TEST",
+        "2020-01-01",
+        "2020-01-04",
+        100.0,
+        {}
+    };
+
+    TestStrategy strategy;
+    const JobResult result = run_backtest(data, strategy, config);
+
+    expect(result.trades.size() == 2, "Expected two executed trades");
+
+    const Trade& buy = result.trades[0];
+    expect(buy.symbol == "TEST", "Buy trade should record the symbol");
+    expect(buy.side == OrderSide::Buy, "First trade should be a buy");
+    expect(std::abs(buy.fill_price - 12.0) < 1e-9,
+           "Buy trade should fill at the next open");
+    expect(std::abs(buy.quantity - 100.0 / 12.0) < 1e-9,
+           "Buy trade quantity should reflect engine sizing");
+
+    const Trade& sell = result.trades[1];
+    expect(sell.symbol == "TEST", "Sell trade should record the symbol");
+    expect(sell.side == OrderSide::Sell, "Second trade should be a sell");
+    expect(std::abs(sell.fill_price - 14.0) < 1e-9,
+           "Sell trade should fill at the next open");
+    expect(std::abs(sell.quantity - buy.quantity) < 1e-9,
+           "Sell trade should close the full position");
+
+    expect(
+        result.metrics.number_of_trades == 1,
+        "A buy and full exit should count as one completed round trip"
+    );
+}
+
 void test_empty_date_range_throws() {
     const std::vector<MarketBar> data{
         make_bar("2020-01-01", 10.0)
@@ -425,6 +469,22 @@ void test_transaction_costs_reduce_returns() {
         result.metrics.number_of_trades == 1,
         "Transaction costs should not change the trade count"
     );
+    expect(
+        result.trades.size() == 2,
+        "Both executions should be recorded as trades"
+    );
+    expect(
+        std::abs(
+            result.trades[0].commission - shares * 10.0 * 0.01
+        ) < 1e-9,
+        "Buy trade should record its commission"
+    );
+    expect(
+        std::abs(
+            result.trades[1].commission - shares * 14.0 * 0.01
+        ) < 1e-9,
+        "Sell trade should record its commission"
+    );
 }
 
 void test_slippage_reduces_returns() {
@@ -462,6 +522,18 @@ void test_slippage_reduces_returns() {
     expect(
         std::abs(result.metrics.total_costs - expected_costs) < 1e-9,
         "Incorrect total slippage costs"
+    );
+    expect(
+        std::abs(
+            result.trades[0].slippage_cost - shares * (buy_fill - 10.0)
+        ) < 1e-9,
+        "Buy trade should record its slippage cost"
+    );
+    expect(
+        std::abs(
+            result.trades[1].slippage_cost - shares * (14.0 - sell_fill)
+        ) < 1e-9,
+        "Sell trade should record its slippage cost"
     );
 }
 
@@ -650,6 +722,7 @@ void test_missing_in_range_data_throws() {
 int main() {
     try {
         test_buy_sell_accounting();
+        test_executions_are_recorded_as_trades();
         test_empty_date_range_throws();
 
         test_max_drawdown();

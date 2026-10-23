@@ -105,7 +105,8 @@ void print_result(const JobResult& result) {
     std::cout << "  Max drawdown: "
               << result.metrics.max_drawdown * 100.0 << "%\n";
     std::cout << "  Number of trades: "
-              << result.metrics.number_of_trades << '\n';
+              << result.metrics.number_of_trades << " round trips\n";
+    std::cout << "  Executed fills: " << result.trades.size() << '\n';
     std::cout << "  Total costs: $"
               << result.metrics.total_costs << '\n';
 }
@@ -139,7 +140,7 @@ void print_ranked_results(const std::vector<JobResult>& results) {
     std::cout << "\n=== Ranked Results (by Sharpe ratio) ===\n";
     std::cout << std::left << std::setw(6) << "Rank"
               << std::setw(10) << "Job ID"
-              << "Sharpe\tTotal Return\tMax Drawdown\tCosts\tTrades\tParameters\n";
+              << "Sharpe\tTotal Return\tMax Drawdown\tCosts\tRound Trips\tParameters\n";
 
     std::size_t rank = 0;
     for (std::size_t i = 0; i < ranked.size(); ++i) {

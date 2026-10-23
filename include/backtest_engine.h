@@ -3,6 +3,7 @@
 #include "market_data.h"
 #include "strategy.h"
 #include "parameter_types.h"
+#include "execution.h"
 
 #include <cstddef>
 #include <map>
@@ -31,6 +32,8 @@ struct BacktestMetrics {
     double total_return = 0.0;
     double sharpe_ratio = 0.0;
     double max_drawdown = 0.0;
+
+    // Completed round trips (a buy followed by a full exit).
     std::size_t number_of_trades = 0;
 
     // Total commission plus slippage incurred, in cash terms.
@@ -42,6 +45,9 @@ struct JobResult {
     std::string asset;
     ParameterMap parameters;
     BacktestMetrics metrics;
+
+    // Every order the engine actually filled, in execution order.
+    std::vector<Trade> trades;
 };
 
 JobResult run_backtest(
