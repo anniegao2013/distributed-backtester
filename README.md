@@ -14,7 +14,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.
-- **Automated tests:** Unit, integration, parallel-execution, and end-to-end tests.
+- **Automated tests:** Unit, integration, accounting-invariant, parallel-execution, and end-to-end tests.
 
 ## Technical Details
 

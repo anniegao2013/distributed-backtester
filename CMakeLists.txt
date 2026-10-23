@@ -138,6 +138,21 @@ add_test(
     COMMAND execution_tests
 )
 
+# Accounting invariant tests
+add_executable(accounting_invariants_tests
+    tests/accounting_invariants_test.cpp
+)
+
+target_link_libraries(
+    accounting_invariants_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME accounting_invariants_tests
+    COMMAND accounting_invariants_tests
+)
+
 # Parameter grid tests
 add_executable(parameter_grid_tests
     tests/parameter_grid_test.cpp
