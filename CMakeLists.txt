@@ -28,6 +28,8 @@ add_library(backtester_core
     src/market_data.cpp
     src/moving_average_crossover.cpp
     src/backtest_engine.cpp
+    src/execution.cpp
+    src/portfolio.cpp
     src/parameter_grid.cpp
     src/performance_stats.cpp
 )
@@ -104,6 +106,51 @@ target_link_libraries(
 add_test(
     NAME backtest_engine_tests
     COMMAND backtest_engine_tests
+)
+
+# Portfolio tests
+add_executable(portfolio_tests
+    tests/portfolio_test.cpp
+)
+
+target_link_libraries(
+    portfolio_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME portfolio_tests
+    COMMAND portfolio_tests
+)
+
+# Order execution tests
+add_executable(execution_tests
+    tests/execution_test.cpp
+)
+
+target_link_libraries(
+    execution_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME execution_tests
+    COMMAND execution_tests
+)
+
+# Accounting invariant tests
+add_executable(accounting_invariants_tests
+    tests/accounting_invariants_test.cpp
+)
+
+target_link_libraries(
+    accounting_invariants_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME accounting_invariants_tests
+    COMMAND accounting_invariants_tests
 )
 
 # Parameter grid tests
