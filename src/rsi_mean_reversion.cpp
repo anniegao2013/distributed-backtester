@@ -40,17 +40,13 @@ Signal RsiMeanReversion::on_bar(
     const std::vector<MarketBar>& history,
     bool has_position
 ) {
-    // The first RSI value needs `period` consecutive changes, so at least
-    // `period + 1` closes are required before a signal can be evaluated.
-    if (history.size() < period_ + 1) {
+    synchronize(history);
+
+    if (!has_rsi()) {
         return Signal::Hold;
     }
 
-    const double rsi = calculate_rsi(history);
-
-    if (!std::isfinite(rsi)) {
-        return Signal::Hold;
-    }
+    const double rsi = current_rsi();
 
     // Buy when the RSI falls below the oversold threshold...
     if (!has_position && rsi < oversold_threshold_) {
@@ -65,51 +61,90 @@ Signal RsiMeanReversion::on_bar(
     return Signal::Hold;
 }
 
-double RsiMeanReversion::calculate_rsi(
+void RsiMeanReversion::synchronize(
     const std::vector<MarketBar>& history
-) const {
-    const std::size_t period = period_;
-    const std::size_t n = history.size();
+) {
+    // The engine appends one bar per call, so the common path folds a
+    // single change. If the caller provides a different series (shorter
+    // history or a changed last close), rebuild instead of carrying stale
+    // state across unrelated series.
+    const bool continues_previous =
+        bars_processed_ > 0 &&
+        history.size() >= bars_processed_ &&
+        history[bars_processed_ - 1].close == previous_close_;
 
-    if (n < period + 1) {
+    if (!continues_previous) {
+        reset_state();
+    }
+
+    for (std::size_t i = bars_processed_; i < history.size(); ++i) {
+        fold_change(history[i].close);
+    }
+}
+
+void RsiMeanReversion::reset_state() {
+    bars_processed_ = 0;
+    changes_seen_ = 0;
+    previous_close_ = 0.0;
+    seed_gain_sum_ = 0.0;
+    seed_loss_sum_ = 0.0;
+    avg_gain_ = 0.0;
+    avg_loss_ = 0.0;
+}
+
+void RsiMeanReversion::fold_change(double close) {
+    if (bars_processed_ == 0) {
+        // The first close anchors the change sequence.
+        previous_close_ = close;
+        bars_processed_ = 1;
+        return;
+    }
+
+    const double change = close - previous_close_;
+    const double gain = std::max(change, 0.0);
+    const double loss = std::max(-change, 0.0);
+
+    if (changes_seen_ < period_) {
+        // Seed the averages with a simple average of the first `period`
+        // changes.
+        seed_gain_sum_ += gain;
+        seed_loss_sum_ += loss;
+        ++changes_seen_;
+
+        if (changes_seen_ == period_) {
+            avg_gain_ = seed_gain_sum_ / static_cast<double>(period_);
+            avg_loss_ = seed_loss_sum_ / static_cast<double>(period_);
+        }
+    } else {
+        // Wilder's recursive smoothing for every later change.
+        avg_gain_ = (avg_gain_ * (static_cast<double>(period_) - 1.0) +
+                     gain) / static_cast<double>(period_);
+        avg_loss_ = (avg_loss_ * (static_cast<double>(period_) - 1.0) +
+                     loss) / static_cast<double>(period_);
+    }
+
+    previous_close_ = close;
+    ++bars_processed_;
+}
+
+bool RsiMeanReversion::has_rsi() const {
+    return changes_seen_ >= period_;
+}
+
+double RsiMeanReversion::current_rsi() const {
+    if (!has_rsi()) {
         return std::numeric_limits<double>::quiet_NaN();
     }
 
-    // Wilder's smoothing: seed the average gain/loss with the simple
-    // average of the first `period` changes, then recursively smooth each
-    // subsequent change.
-    double avg_gain = 0.0;
-    double avg_loss = 0.0;
-
-    for (std::size_t i = 0; i < period; ++i) {
-        const double change = history[i + 1].close - history[i].close;
-        avg_gain += std::max(change, 0.0);
-        avg_loss += std::max(-change, 0.0);
-    }
-
-    avg_gain /= static_cast<double>(period);
-    avg_loss /= static_cast<double>(period);
-
-    for (std::size_t i = period; i + 1 < n; ++i) {
-        const double change = history[i + 1].close - history[i].close;
-        const double gain = std::max(change, 0.0);
-        const double loss = std::max(-change, 0.0);
-
-        avg_gain = (avg_gain * (static_cast<double>(period) - 1.0) +
-                    gain) / static_cast<double>(period);
-        avg_loss = (avg_loss * (static_cast<double>(period) - 1.0) +
-                    loss) / static_cast<double>(period);
-    }
-
-    if (avg_loss == 0.0) {
+    if (avg_loss_ == 0.0) {
         // No losses in the window: the asset is fully overbought.
         return 100.0;
     }
 
-    if (avg_gain == 0.0) {
+    if (avg_gain_ == 0.0) {
         // No gains in the window: the asset is fully oversold.
         return 0.0;
     }
 
-    return 100.0 * avg_gain / (avg_gain + avg_loss);
+    return 100.0 * avg_gain_ / (avg_gain_ + avg_loss_);
 }

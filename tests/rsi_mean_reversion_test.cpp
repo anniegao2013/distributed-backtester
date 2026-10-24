@@ -202,6 +202,57 @@ void test_sell_when_rsi_above_exit() {
     );
 }
 
+void test_incremental_state_matches_full_history() {
+    const std::vector<double> closes{
+        10.0, 10.0, 10.0, 6.0, 7.0, 20.0, 15.0
+    };
+
+    RsiMeanReversion incremental(3, 30.0, 70.0);
+
+    for (std::size_t size = 1; size <= closes.size(); ++size) {
+        const std::vector<double> prefix(
+            closes.begin(),
+            closes.begin() + size
+        );
+        const auto history = make_history(prefix);
+
+        // A fresh strategy folds the whole prefix from scratch, giving the
+        // reference RSI for this point in the series.
+        RsiMeanReversion fresh(3, 30.0, 70.0);
+
+        expect_signal(
+            incremental.on_bar(history, false),
+            fresh.on_bar(history, false),
+            "Incremental RSI should match a full recomputation"
+        );
+    }
+}
+
+void test_state_rebuilds_when_history_changes() {
+    RsiMeanReversion strategy(3, 30.0, 70.0);
+
+    (void)strategy.on_bar(
+        make_history({10.0, 11.0, 12.0, 13.0, 14.0}),
+        false
+    );
+
+    // An unrelated, shorter series must not inherit the previous state.
+    const auto replacement = make_history({10.0, 10.0, 10.0, 6.0});
+    RsiMeanReversion fresh(3, 30.0, 70.0);
+
+    expect_signal(
+        strategy.on_bar(replacement, false),
+        fresh.on_bar(replacement, false),
+        "RSI state should rebuild when the history series changes"
+    );
+
+    expect_signal(
+        strategy.on_bar(replacement, false),
+        Signal::Buy,
+        "Rebuilt RSI should still signal on the replacement series"
+    );
+}
+
 }  // namespace
 
 int main() {
@@ -213,6 +264,8 @@ int main() {
         run_test("no sell while flat", test_no_sell_while_flat);
         run_test("no repeated buy while in position", test_no_repeated_buy_while_in_position);
         run_test("sell when RSI above exit", test_sell_when_rsi_above_exit);
+        run_test("incremental state matches full history", test_incremental_state_matches_full_history);
+        run_test("state rebuilds when history changes", test_state_rebuilds_when_history_changes);
 
         std::cout << "\nResults: " << passed << " passed, "
                   << failed << " failed\n";
