@@ -8,9 +8,10 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Strategy interface:** Interchangeable strategies through a common `on_bar()` interface.
 - **Execution pipeline:** Strategies emit `Signal` intent; the engine sizes `Order`s, fills them into `Trade`s (applying slippage and commission), and applies trades to the portfolio.
 - **Moving-average crossover:** Example long-only strategy using short- and long-term moving averages.
+- **RSI mean reversion:** Example long-only strategy that buys when the Relative Strength Index (RSI) falls below an oversold threshold and sells when it rises above an exit threshold.
 - **Backtesting engine:** Simulates trades and tracks portfolio equity over a date range, including warm-up bars.
 - **Portfolio accounting:** Cash, per-symbol positions with average cost, and mark-to-market equity; buys and sells update the holding identified by symbol.
-- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by hardware concurrency.
+- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by hardware concurrency. The demo runs the moving-average crossover and RSI mean-reversion strategies side by side, sweeping each strategy's parameters.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.

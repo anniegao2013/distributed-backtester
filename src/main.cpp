@@ -1,5 +1,6 @@
 #include "market_data.h"
 #include "moving_average_crossover.h"
+#include "rsi_mean_reversion.h"
 #include "backtest_engine.h"
 #include "parameter_grid.h"
 #include "performance_stats.h"
@@ -11,22 +12,67 @@
 #include <future>
 #include <iostream>
 #include <iomanip>
+#include <memory>
 #include <numeric>
+#include <stdexcept>
 #include <string>
 #include <sys/resource.h>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
 
-// Builds a MovingAverageCrossover strategy from a single parameter
-// combination produced by the parameter grid.
-MovingAverageCrossover make_strategy(const ParameterMap& parameters) {
-    const std::size_t short_window =
-        static_cast<std::size_t>(parameters.at("short_window"));
-    const std::size_t long_window =
-        static_cast<std::size_t>(parameters.at("long_window"));
-    return MovingAverageCrossover(short_window, long_window);
+// Identifies which strategy a parameter combination configures.
+enum class StrategyKind {
+    MovingAverageCrossover,
+    RsiMeanReversion
+};
+
+// One backtest job: a strategy plus the parameter combination to run it
+// with. The demo builds one job per parameter combination.
+struct StrategyJob {
+    StrategyKind kind = StrategyKind::MovingAverageCrossover;
+    std::string id;
+    ParameterMap parameters;
+};
+
+// Builds the strategy described by a job. The engine only sees the
+// Strategy interface, so both implementations run through the same
+// backtest pipeline.
+std::unique_ptr<Strategy> make_strategy(const StrategyJob& job) {
+    switch (job.kind) {
+        case StrategyKind::MovingAverageCrossover: {
+            const std::size_t short_window =
+                static_cast<std::size_t>(
+                    job.parameters.at("short_window"));
+            const std::size_t long_window =
+                static_cast<std::size_t>(
+                    job.parameters.at("long_window"));
+
+            return std::make_unique<MovingAverageCrossover>(
+                short_window,
+                long_window
+            );
+        }
+        case StrategyKind::RsiMeanReversion: {
+            const std::size_t period =
+                static_cast<std::size_t>(
+                    job.parameters.at("rsi_period"));
+            const double oversold_threshold =
+                job.parameters.at("oversold_threshold");
+            const double exit_threshold =
+                job.parameters.at("exit_threshold");
+
+            return std::make_unique<RsiMeanReversion>(
+                period,
+                oversold_threshold,
+                exit_threshold
+            );
+        }
+    }
+
+    throw std::invalid_argument("Unknown strategy kind");
 }
 
 // Outcome of running a single parameter combination, carrying the JobResult.
@@ -38,13 +84,13 @@ struct JobOutcome {
     std::chrono::duration<double> duration{0.0};
 };
 
-// Runs one backtest for a single parameter combination, wiring the
-// combination into the BacktestConfig's parameter map. Captures exceptions
-// so a single failing combination does not abort the whole grid, and times
-// the job for latency statistics.
+// Runs one backtest for a single job, wiring the strategy and its
+// parameter combination into the BacktestConfig. Captures exceptions so a
+// single failing combination does not abort the whole run, and times the
+// job for latency statistics.
 JobOutcome run_combination(
     const std::vector<MarketBar>& dataset,
-    const ParameterMap& parameters,
+    const StrategyJob& job,
     std::size_t index
 ) {
     JobOutcome outcome;
@@ -54,18 +100,18 @@ JobOutcome run_combination(
 
     try {
         const BacktestConfig config{
-            "grid-" + std::to_string(index),
+            job.id,
             "SP500",
             "2000-01-01",
             "2010-12-31",
             10000.0,
-            parameters,
+            job.parameters,
             0.001,   // 10 bps commission on traded notional
             0.0005   // 5 bps adverse slippage on each fill
         };
 
-        MovingAverageCrossover strategy = make_strategy(parameters);
-        outcome.result = run_backtest(dataset, strategy, config);
+        const auto strategy = make_strategy(job);
+        outcome.result = run_backtest(dataset, *strategy, config);
         outcome.ok = true;
     } catch (const std::exception& error) {
         outcome.error = error.what();
@@ -75,6 +121,76 @@ JobOutcome run_combination(
     outcome.duration = t1 - t0;
 
     return outcome;
+}
+
+// Builds the demo job list: a moving-average crossover grid and an RSI
+// mean-reversion grid, interleaved so both strategies run side by side.
+std::vector<StrategyJob> build_demo_jobs() {
+    // Moving-average crossover grid. Every short window is below the
+    // minimum long window, so all combinations are valid.
+    const ParameterGrid crossover_grid{
+        {"short_window",
+         {10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0,
+          55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0}},
+        {"long_window",
+         {100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0,
+          180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0,
+          260.0, 270.0, 280.0, 290.0, 300.0}}
+    };
+
+    std::vector<StrategyJob> crossover_jobs;
+    for (const auto& parameters :
+         generate_parameter_combinations(crossover_grid)) {
+        crossover_jobs.push_back({
+            StrategyKind::MovingAverageCrossover,
+            "crossover-" + std::to_string(crossover_jobs.size() + 1),
+            parameters
+        });
+    }
+
+    // RSI mean-reversion grid. Every period is positive and every exit
+    // threshold is strictly above its oversold threshold.
+    const ParameterGrid rsi_grid{
+        {"rsi_period",
+         {5.0, 10.0, 14.0, 20.0}},
+        {"oversold_threshold",
+         {20.0, 30.0}},
+        {"exit_threshold",
+         {60.0, 70.0}}
+    };
+
+    std::vector<StrategyJob> rsi_jobs;
+    for (const auto& parameters :
+         generate_parameter_combinations(rsi_grid)) {
+        rsi_jobs.push_back({
+            StrategyKind::RsiMeanReversion,
+            "rsi-" + std::to_string(rsi_jobs.size() + 1),
+            parameters
+        });
+    }
+
+    // Interleave the two grids so the sliding execution window always
+    // contains a mix of strategies rather than draining one grid first.
+    std::vector<StrategyJob> jobs;
+    jobs.reserve(crossover_jobs.size() + rsi_jobs.size());
+
+    std::size_t crossover_index = 0;
+    std::size_t rsi_index = 0;
+
+    while (crossover_index < crossover_jobs.size() ||
+           rsi_index < rsi_jobs.size()) {
+        if (crossover_index < crossover_jobs.size()) {
+            jobs.push_back(std::move(crossover_jobs[crossover_index]));
+            ++crossover_index;
+        }
+
+        if (rsi_index < rsi_jobs.size()) {
+            jobs.push_back(std::move(rsi_jobs[rsi_index]));
+            ++rsi_index;
+        }
+    }
+
+    return jobs;
 }
 
 // Returns process CPU time (user + system) in seconds.
@@ -139,7 +255,7 @@ void print_ranked_results(const std::vector<JobResult>& results) {
 
     std::cout << "\n=== Ranked Results (by Sharpe ratio) ===\n";
     std::cout << std::left << std::setw(6) << "Rank"
-              << std::setw(10) << "Job ID"
+              << std::setw(14) << "Job ID"
               << "Sharpe\tTotal Return\tMax Drawdown\tCosts\tRound Trips\tParameters\n";
 
     std::size_t rank = 0;
@@ -162,7 +278,7 @@ void print_ranked_results(const std::vector<JobResult>& results) {
         }
 
         std::cout << std::left << std::setw(6) << rank
-                  << std::setw(10) << result.job_id
+                  << std::setw(14) << result.job_id
                   << std::fixed << std::setprecision(4)
                   << result.metrics.sharpe_ratio
                   << "\t"
@@ -238,62 +354,54 @@ int main() {
         std::cout << "First date: " << dataset.front().date << '\n';
         std::cout << "Last date:  " << dataset.back().date << '\n';
 
-        // Define a large parameter grid so parallel execution shows a
-        // noticeable speed improvement. All short_window values are below
-        // the minimum long_window so every combination is valid.
-        const ParameterGrid grid{
-            {"short_window",
-             {10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0,
-              55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0}},
-            {"long_window",
-             {100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0,
-              180.0, 190.0, 200.0, 210.0, 220.0, 230.0, 240.0, 250.0,
-              260.0, 270.0, 280.0, 290.0, 300.0}}
-        };
+        // Build the demo jobs: a moving-average crossover grid and an RSI
+        // mean-reversion grid, interleaved so both strategies run together.
+        const auto jobs = build_demo_jobs();
+        const std::size_t max_concurrent = std::max<std::size_t>(
+            1,
+            std::thread::hardware_concurrency()
+        );
 
-        // Expand the grid into every concrete parameter combination.
-        const auto combinations = generate_parameter_combinations(grid);
-        const std::size_t max_concurrent =
-            std::thread::hardware_concurrency();
-
-        std::cout << "Running " << combinations.size()
-                  << " parameter combinations concurrently "
-                  << "(up to " << max_concurrent << " jobs at a time).\n";
+        std::cout << "Running " << jobs.size()
+                  << " parameter combinations concurrently across both "
+                  << "strategies (up to " << max_concurrent
+                  << " jobs at a time).\n";
 
         const double cpu_start = process_cpu_seconds();
         const auto t0 = std::chrono::steady_clock::now();
 
-        // Launch combinations in bounded batches so concurrency never
-        // exceeds hardware capacity. Each task is independent: the dataset
-        // is read-only and each task builds its own strategy/config.
+        // Keep a sliding window of at most max_concurrent in-flight jobs so
+        // fast and slow runs overlap while concurrency stays bounded by
+        // hardware capacity. Each task is independent: the dataset is
+        // read-only and each task builds its own strategy/config.
         std::vector<JobOutcome> outcomes;
-        outcomes.reserve(combinations.size());
+        outcomes.reserve(jobs.size());
 
+        std::vector<std::future<JobOutcome>> in_flight;
+        in_flight.reserve(max_concurrent);
+
+        std::size_t next_job = 0;
         std::size_t index = 0;
-        auto it = combinations.begin();
-        while (it != combinations.end()) {
-            std::vector<std::future<JobOutcome>> batch;
-            batch.reserve(max_concurrent);
 
-            std::size_t batch_size = 0;
-            while (it != combinations.end() && batch_size < max_concurrent) {
+        while (next_job < jobs.size() || !in_flight.empty()) {
+            while (next_job < jobs.size() &&
+                   in_flight.size() < max_concurrent) {
                 ++index;
-                batch.push_back(
+                in_flight.push_back(
                     std::async(
                         std::launch::async,
                         run_combination,
                         std::cref(dataset),
-                        *it,
+                        jobs[next_job],
                         index
                     )
                 );
-                ++it;
-                ++batch_size;
+                ++next_job;
             }
 
-            for (auto& future : batch) {
-                outcomes.push_back(future.get());
-            }
+            // Retire the oldest job before launching another one.
+            outcomes.push_back(in_flight.front().get());
+            in_flight.erase(in_flight.begin());
         }
 
         const auto t1 = std::chrono::steady_clock::now();
@@ -330,7 +438,7 @@ int main() {
         }
 
         std::cout << "\nCompleted " << results.size() << " of "
-                  << combinations.size() << " backtests in "
+                  << jobs.size() << " backtests in "
                   << wall_seconds << " seconds.\n";
 
         print_ranked_results(results);

@@ -65,10 +65,10 @@ int main() {
         return 1;
     }
 
-    // A few representative job IDs should appear across the grid.
-    if (!contains("grid-1") || !contains("grid-100") ||
-        !contains("grid-378")) {
-        std::cerr << "Missing: expected grid job IDs\n";
+    // Both strategies should be exercised side by side by the demo grid.
+    if (!contains("crossover-1") || !contains("crossover-378") ||
+        !contains("rsi-1") || !contains("rsi-16")) {
+        std::cerr << "Missing: expected crossover and RSI job IDs\n";
         return 1;
     }
 

@@ -27,6 +27,7 @@ endif()
 add_library(backtester_core
     src/market_data.cpp
     src/moving_average_crossover.cpp
+    src/rsi_mean_reversion.cpp
     src/backtest_engine.cpp
     src/execution.cpp
     src/portfolio.cpp
@@ -91,6 +92,21 @@ target_link_libraries(
 add_test(
     NAME moving_average_crossover_tests
     COMMAND moving_average_crossover_tests
+)
+
+# RSI mean reversion tests
+add_executable(rsi_mean_reversion_tests
+    tests/rsi_mean_reversion_test.cpp
+)
+
+target_link_libraries(
+    rsi_mean_reversion_tests
+    PRIVATE backtester_core
+)
+
+add_test(
+    NAME rsi_mean_reversion_tests
+    COMMAND rsi_mean_reversion_tests
 )
 
 # Backtesting engine tests
