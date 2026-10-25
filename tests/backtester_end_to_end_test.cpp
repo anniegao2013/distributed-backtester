@@ -65,10 +65,11 @@ int main() {
         return 1;
     }
 
-    // Both strategies should be exercised side by side by the demo grid.
+    // All strategies should be exercised side by side by the demo grid.
     if (!contains("crossover-1") || !contains("crossover-378") ||
-        !contains("rsi-1") || !contains("rsi-16")) {
-        std::cerr << "Missing: expected crossover and RSI job IDs\n";
+        !contains("rsi-1") || !contains("rsi-16") ||
+        !contains("donchian-1") || !contains("donchian-9")) {
+        std::cerr << "Missing: expected crossover, RSI, and Donchian job IDs\n";
         return 1;
     }
 

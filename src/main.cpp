@@ -1,6 +1,7 @@
 #include "market_data.h"
 #include "moving_average_crossover.h"
 #include "rsi_mean_reversion.h"
+#include "donchian_channel_breakout.h"
 #include "backtest_engine.h"
 #include "parameter_grid.h"
 #include "performance_stats.h"
@@ -26,7 +27,8 @@ namespace {
 // Identifies which strategy a parameter combination configures.
 enum class StrategyKind {
     MovingAverageCrossover,
-    RsiMeanReversion
+    RsiMeanReversion,
+    DonchianChannelBreakout
 };
 
 // One backtest job: a strategy plus the parameter combination to run it
@@ -68,6 +70,19 @@ std::unique_ptr<Strategy> make_strategy(const StrategyJob& job) {
                 period,
                 oversold_threshold,
                 exit_threshold
+            );
+        }
+        case StrategyKind::DonchianChannelBreakout: {
+            const std::size_t entry_period =
+                static_cast<std::size_t>(
+                    job.parameters.at("entry_period"));
+            const std::size_t exit_period =
+                static_cast<std::size_t>(
+                    job.parameters.at("exit_period"));
+
+            return std::make_unique<DonchianChannelBreakout>(
+                entry_period,
+                exit_period
             );
         }
     }
@@ -123,8 +138,9 @@ JobOutcome run_combination(
     return outcome;
 }
 
-// Builds the demo job list: a moving-average crossover grid and an RSI
-// mean-reversion grid, interleaved so both strategies run side by side.
+// Builds the demo job list: a moving-average crossover grid, an RSI
+// mean-reversion grid, and a Donchian channel breakout grid, interleaved
+// so all three strategies run side by side.
 std::vector<StrategyJob> build_demo_jobs() {
     // Moving-average crossover grid. Every short window is below the
     // minimum long window, so all combinations are valid.
@@ -169,16 +185,39 @@ std::vector<StrategyJob> build_demo_jobs() {
         });
     }
 
-    // Interleave the two grids so the sliding execution window always
-    // contains a mix of strategies rather than draining one grid first.
+    // Donchian channel breakout grid. Every period is positive; a shorter
+    // exit period trails the price more tightly than the entry channel.
+    const ParameterGrid donchian_grid{
+        {"entry_period",
+         {20.0, 40.0, 55.0}},
+        {"exit_period",
+         {5.0, 10.0, 15.0}}
+    };
+
+    std::vector<StrategyJob> donchian_jobs;
+    for (const auto& parameters :
+         generate_parameter_combinations(donchian_grid)) {
+        donchian_jobs.push_back({
+            StrategyKind::DonchianChannelBreakout,
+            "donchian-" + std::to_string(donchian_jobs.size() + 1),
+            parameters
+        });
+    }
+
+    // Interleave the grids so the sliding execution window always contains
+    // a mix of strategies rather than draining one grid first.
     std::vector<StrategyJob> jobs;
-    jobs.reserve(crossover_jobs.size() + rsi_jobs.size());
+    jobs.reserve(
+        crossover_jobs.size() + rsi_jobs.size() + donchian_jobs.size()
+    );
 
     std::size_t crossover_index = 0;
     std::size_t rsi_index = 0;
+    std::size_t donchian_index = 0;
 
     while (crossover_index < crossover_jobs.size() ||
-           rsi_index < rsi_jobs.size()) {
+           rsi_index < rsi_jobs.size() ||
+           donchian_index < donchian_jobs.size()) {
         if (crossover_index < crossover_jobs.size()) {
             jobs.push_back(std::move(crossover_jobs[crossover_index]));
             ++crossover_index;
@@ -187,6 +226,11 @@ std::vector<StrategyJob> build_demo_jobs() {
         if (rsi_index < rsi_jobs.size()) {
             jobs.push_back(std::move(rsi_jobs[rsi_index]));
             ++rsi_index;
+        }
+
+        if (donchian_index < donchian_jobs.size()) {
+            jobs.push_back(std::move(donchian_jobs[donchian_index]));
+            ++donchian_index;
         }
     }
 
@@ -354,8 +398,9 @@ int main() {
         std::cout << "First date: " << dataset.front().date << '\n';
         std::cout << "Last date:  " << dataset.back().date << '\n';
 
-        // Build the demo jobs: a moving-average crossover grid and an RSI
-        // mean-reversion grid, interleaved so both strategies run together.
+        // Build the demo jobs: moving-average crossover, RSI mean-reversion,
+        // and Donchian channel breakout grids, interleaved so all three
+        // strategies run together.
         const auto jobs = build_demo_jobs();
         const std::size_t max_concurrent = std::max<std::size_t>(
             1,
@@ -363,7 +408,7 @@ int main() {
         );
 
         std::cout << "Running " << jobs.size()
-                  << " parameter combinations concurrently across both "
+                  << " parameter combinations concurrently across all "
                   << "strategies (up to " << max_concurrent
                   << " jobs at a time).\n";
 
