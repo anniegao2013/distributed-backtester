@@ -25,6 +25,7 @@ endif()
 # -------------------------------------------------------------------
 
 add_library(backtester_core
+    src/json_value.cpp
     src/market_data.cpp
     src/moving_average_crossover.cpp
     src/rsi_mean_reversion.cpp
@@ -34,6 +35,7 @@ add_library(backtester_core
     src/portfolio.cpp
     src/parameter_grid.cpp
     src/performance_stats.cpp
+    src/experiment.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include)
@@ -228,6 +230,30 @@ target_link_libraries(
 add_test(
     NAME performance_stats_tests
     COMMAND performance_stats_tests
+)
+
+# JSON value tests
+add_executable(json_value_tests
+    tests/json_value_test.cpp
+)
+
+target_link_libraries(json_value_tests PRIVATE backtester_core)
+
+add_test(
+    NAME json_value_tests
+    COMMAND json_value_tests
+)
+
+# Experiment schema and service entry point tests
+add_executable(experiment_tests
+    tests/experiment_test.cpp
+)
+
+target_link_libraries(experiment_tests PRIVATE backtester_core)
+
+add_test(
+    NAME experiment_tests
+    COMMAND experiment_tests
 )
 
 # Parallel execution tests

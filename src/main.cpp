@@ -1,150 +1,62 @@
-#include "market_data.h"
-#include "moving_average_crossover.h"
-#include "rsi_mean_reversion.h"
-#include "donchian_channel_breakout.h"
-#include "backtest_engine.h"
-#include "parameter_grid.h"
+#include "experiment.h"
 #include "performance_stats.h"
 
 #include <algorithm>
-#include <chrono>
-#include <cmath>
+#include <cstddef>
 #include <exception>
-#include <future>
-#include <iostream>
+#include <fstream>
 #include <iomanip>
-#include <memory>
-#include <numeric>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
-#include <sys/resource.h>
-#include <thread>
 #include <utility>
 #include <vector>
 
 namespace {
 
-// Identifies which strategy a parameter combination configures.
-enum class StrategyKind {
-    MovingAverageCrossover,
-    RsiMeanReversion,
-    DonchianChannelBreakout
-};
+constexpr const char* kUsage =
+    "Usage: backtester [options]\n"
+    "\n"
+    "Runs the built-in three-strategy demo when no experiment is supplied.\n"
+    "\n"
+    "Options:\n"
+    "  -e, --experiment PATH  Run the experiment described by a JSON file.\n"
+    "                         Use '-' to read the JSON request from stdin.\n"
+    "      --json             Emit the response as JSON instead of text.\n"
+    "  -h, --help             Show this help.\n"
+    "\n"
+    "Examples:\n"
+    "  backtester --experiment experiments/crossover_sweep.json\n"
+    "  backtester --experiment experiments/demo.json --json\n"
+    "  cat request.json | backtester --experiment - --json\n";
 
-// One backtest job: a strategy plus the parameter combination to run it
-// with. The demo builds one job per parameter combination.
-struct StrategyJob {
-    StrategyKind kind = StrategyKind::MovingAverageCrossover;
-    std::string id;
-    ParameterMap parameters;
-};
+// Builds the demo experiment programmatically. The demo is expressed with
+// the same request model that JSON documents produce, so it exercises the
+// exact code path used by file- and service-driven runs.
+ExperimentRequest build_demo_experiment() {
+    ExperimentRequest request;
+    request.experiment_id = "demo-three-strategy-sweep";
+    request.description =
+        "Moving-average crossover, RSI mean reversion, and Donchian "
+        "channel breakout swept over SP500 2000-2010.";
+    request.data = {
+        "data/market/sp500_1950_2018.csv",
+        "SP500",
+        "2000-01-01",
+        "2010-12-31"
+    };
+    request.execution = {
+        10000.0,  // initial cash
+        0.001,    // 10 bps commission on traded notional
+        0.0005,   // 5 bps adverse slippage on each fill
+        0         // 0 = use hardware concurrency
+    };
 
-// Builds the strategy described by a job. The engine only sees the
-// Strategy interface, so both implementations run through the same
-// backtest pipeline.
-std::unique_ptr<Strategy> make_strategy(const StrategyJob& job) {
-    switch (job.kind) {
-        case StrategyKind::MovingAverageCrossover: {
-            const std::size_t short_window =
-                static_cast<std::size_t>(
-                    job.parameters.at("short_window"));
-            const std::size_t long_window =
-                static_cast<std::size_t>(
-                    job.parameters.at("long_window"));
-
-            return std::make_unique<MovingAverageCrossover>(
-                short_window,
-                long_window
-            );
-        }
-        case StrategyKind::RsiMeanReversion: {
-            const std::size_t period =
-                static_cast<std::size_t>(
-                    job.parameters.at("rsi_period"));
-            const double oversold_threshold =
-                job.parameters.at("oversold_threshold");
-            const double exit_threshold =
-                job.parameters.at("exit_threshold");
-
-            return std::make_unique<RsiMeanReversion>(
-                period,
-                oversold_threshold,
-                exit_threshold
-            );
-        }
-        case StrategyKind::DonchianChannelBreakout: {
-            const std::size_t entry_period =
-                static_cast<std::size_t>(
-                    job.parameters.at("entry_period"));
-            const std::size_t exit_period =
-                static_cast<std::size_t>(
-                    job.parameters.at("exit_period"));
-
-            return std::make_unique<DonchianChannelBreakout>(
-                entry_period,
-                exit_period
-            );
-        }
-    }
-
-    throw std::invalid_argument("Unknown strategy kind");
-}
-
-// Outcome of running a single parameter combination, carrying the JobResult.
-struct JobOutcome {
-    std::size_t index = 0;
-    JobResult result;
-    bool ok = false;
-    std::string error;
-    std::chrono::duration<double> duration{0.0};
-};
-
-// Runs one backtest for a single job, wiring the strategy and its
-// parameter combination into the BacktestConfig. Captures exceptions so a
-// single failing combination does not abort the whole run, and times the
-// job for latency statistics.
-JobOutcome run_combination(
-    const std::vector<MarketBar>& dataset,
-    const StrategyJob& job,
-    std::size_t index
-) {
-    JobOutcome outcome;
-    outcome.index = index;
-
-    const auto t0 = std::chrono::steady_clock::now();
-
-    try {
-        const BacktestConfig config{
-            job.id,
-            "SP500",
-            "2000-01-01",
-            "2010-12-31",
-            10000.0,
-            job.parameters,
-            0.001,   // 10 bps commission on traded notional
-            0.0005   // 5 bps adverse slippage on each fill
-        };
-
-        const auto strategy = make_strategy(job);
-        outcome.result = run_backtest(dataset, *strategy, config);
-        outcome.ok = true;
-    } catch (const std::exception& error) {
-        outcome.error = error.what();
-    }
-
-    const auto t1 = std::chrono::steady_clock::now();
-    outcome.duration = t1 - t0;
-
-    return outcome;
-}
-
-// Builds the demo job list: a moving-average crossover grid, an RSI
-// mean-reversion grid, and a Donchian channel breakout grid, interleaved
-// so all three strategies run side by side.
-std::vector<StrategyJob> build_demo_jobs() {
-    // Moving-average crossover grid. Every short window is below the
-    // minimum long window, so all combinations are valid.
-    const ParameterGrid crossover_grid{
+    ExperimentStrategy crossover;
+    crossover.id = "crossover";
+    crossover.type = "moving_average_crossover";
+    crossover.grid = {
         {"short_window",
          {10.0, 15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0, 50.0,
           55.0, 60.0, 65.0, 70.0, 75.0, 80.0, 85.0, 90.0, 95.0}},
@@ -154,97 +66,29 @@ std::vector<StrategyJob> build_demo_jobs() {
           260.0, 270.0, 280.0, 290.0, 300.0}}
     };
 
-    std::vector<StrategyJob> crossover_jobs;
-    for (const auto& parameters :
-         generate_parameter_combinations(crossover_grid)) {
-        crossover_jobs.push_back({
-            StrategyKind::MovingAverageCrossover,
-            "crossover-" + std::to_string(crossover_jobs.size() + 1),
-            parameters
-        });
-    }
-
-    // RSI mean-reversion grid. Every period is positive and every exit
-    // threshold is strictly above its oversold threshold.
-    const ParameterGrid rsi_grid{
-        {"rsi_period",
-         {5.0, 10.0, 14.0, 20.0}},
-        {"oversold_threshold",
-         {20.0, 30.0}},
-        {"exit_threshold",
-         {60.0, 70.0}}
+    ExperimentStrategy rsi;
+    rsi.id = "rsi";
+    rsi.type = "rsi_mean_reversion";
+    rsi.grid = {
+        {"rsi_period", {5.0, 10.0, 14.0, 20.0}},
+        {"oversold_threshold", {20.0, 30.0}},
+        {"exit_threshold", {60.0, 70.0}}
     };
 
-    std::vector<StrategyJob> rsi_jobs;
-    for (const auto& parameters :
-         generate_parameter_combinations(rsi_grid)) {
-        rsi_jobs.push_back({
-            StrategyKind::RsiMeanReversion,
-            "rsi-" + std::to_string(rsi_jobs.size() + 1),
-            parameters
-        });
-    }
-
-    // Donchian channel breakout grid. Every period is positive; a shorter
-    // exit period trails the price more tightly than the entry channel.
-    const ParameterGrid donchian_grid{
-        {"entry_period",
-         {20.0, 40.0, 55.0}},
-        {"exit_period",
-         {5.0, 10.0, 15.0}}
+    ExperimentStrategy donchian;
+    donchian.id = "donchian";
+    donchian.type = "donchian_channel_breakout";
+    donchian.grid = {
+        {"entry_period", {20.0, 40.0, 55.0}},
+        {"exit_period", {5.0, 10.0, 15.0}}
     };
 
-    std::vector<StrategyJob> donchian_jobs;
-    for (const auto& parameters :
-         generate_parameter_combinations(donchian_grid)) {
-        donchian_jobs.push_back({
-            StrategyKind::DonchianChannelBreakout,
-            "donchian-" + std::to_string(donchian_jobs.size() + 1),
-            parameters
-        });
-    }
+    request.strategies.push_back(std::move(crossover));
+    request.strategies.push_back(std::move(rsi));
+    request.strategies.push_back(std::move(donchian));
 
-    // Interleave the grids so the sliding execution window always contains
-    // a mix of strategies rather than draining one grid first.
-    std::vector<StrategyJob> jobs;
-    jobs.reserve(
-        crossover_jobs.size() + rsi_jobs.size() + donchian_jobs.size()
-    );
-
-    std::size_t crossover_index = 0;
-    std::size_t rsi_index = 0;
-    std::size_t donchian_index = 0;
-
-    while (crossover_index < crossover_jobs.size() ||
-           rsi_index < rsi_jobs.size() ||
-           donchian_index < donchian_jobs.size()) {
-        if (crossover_index < crossover_jobs.size()) {
-            jobs.push_back(std::move(crossover_jobs[crossover_index]));
-            ++crossover_index;
-        }
-
-        if (rsi_index < rsi_jobs.size()) {
-            jobs.push_back(std::move(rsi_jobs[rsi_index]));
-            ++rsi_index;
-        }
-
-        if (donchian_index < donchian_jobs.size()) {
-            jobs.push_back(std::move(donchian_jobs[donchian_index]));
-            ++donchian_index;
-        }
-    }
-
-    return jobs;
-}
-
-// Returns process CPU time (user + system) in seconds.
-double process_cpu_seconds() {
-    struct rusage usage;
-    if (getrusage(RUSAGE_SELF, &usage) != 0) {
-        return 0.0;
-    }
-    return usage.ru_utime.tv_sec + usage.ru_utime.tv_usec / 1e6 +
-           usage.ru_stime.tv_sec + usage.ru_stime.tv_usec / 1e6;
+    finalize_experiment(request);
+    return request;
 }
 
 void print_result(const JobResult& result) {
@@ -271,29 +115,35 @@ void print_result(const JobResult& result) {
               << result.metrics.total_costs << '\n';
 }
 
-// Ranks results by Sharpe ratio (highest first) and prints a summary table.
-// Ties receive the same rank; the next rank skips the tied positions.
-void print_ranked_results(const std::vector<JobResult>& results) {
-    if (results.empty()) {
-        return;
+// Ranks successful jobs by Sharpe ratio (highest first) and prints a summary
+// table. Ties receive the same rank; the next rank skips tied positions.
+void print_ranked_results(
+    const std::vector<ExperimentJobOutcome>& outcomes
+) {
+    std::vector<const ExperimentJobOutcome*> ranked;
+    ranked.reserve(outcomes.size());
+
+    for (const auto& outcome : outcomes) {
+        if (outcome.ok) {
+            ranked.push_back(&outcome);
+        }
     }
 
-    // Sort a copy by Sharpe ratio descending, then total return descending
-    // as a tie-breaker.
-    std::vector<const JobResult*> ranked;
-    ranked.reserve(results.size());
-    for (const auto& result : results) {
-        ranked.push_back(&result);
+    if (ranked.empty()) {
+        return;
     }
 
     std::sort(
         ranked.begin(),
         ranked.end(),
-        [](const JobResult* a, const JobResult* b) {
-            if (a->metrics.sharpe_ratio != b->metrics.sharpe_ratio) {
-                return a->metrics.sharpe_ratio > b->metrics.sharpe_ratio;
+        [](const ExperimentJobOutcome* a, const ExperimentJobOutcome* b) {
+            const BacktestMetrics& left = a->result.metrics;
+            const BacktestMetrics& right = b->result.metrics;
+
+            if (left.sharpe_ratio != right.sharpe_ratio) {
+                return left.sharpe_ratio > right.sharpe_ratio;
             }
-            return a->metrics.total_return > b->metrics.total_return;
+            return left.total_return > right.total_return;
         }
     );
 
@@ -304,43 +154,42 @@ void print_ranked_results(const std::vector<JobResult>& results) {
 
     std::size_t rank = 0;
     for (std::size_t i = 0; i < ranked.size(); ++i) {
-        const JobResult& result = *ranked[i];
+        const BacktestMetrics& metrics = ranked[i]->result.metrics;
 
-        // Assign competition ranking ("1224"): ties share a rank.
+        // Competition ranking ("1224"): ties share a rank.
         if (i == 0) {
             rank = 1;
         } else {
-            const JobResult& previous = *ranked[i - 1];
-            if (
-                result.metrics.sharpe_ratio == previous.metrics.sharpe_ratio &&
-                result.metrics.total_return == previous.metrics.total_return
-            ) {
-                // Same rank as previous.
-            } else {
+            const BacktestMetrics& previous =
+                ranked[i - 1]->result.metrics;
+
+            if (metrics.sharpe_ratio != previous.sharpe_ratio ||
+                metrics.total_return != previous.total_return) {
                 rank = i + 1;
             }
         }
 
         std::cout << std::left << std::setw(6) << rank
-                  << std::setw(14) << result.job_id
+                  << std::setw(14) << ranked[i]->result.job_id
                   << std::fixed << std::setprecision(4)
-                  << result.metrics.sharpe_ratio
+                  << metrics.sharpe_ratio
                   << "\t"
                   << std::fixed << std::setprecision(4)
-                  << result.metrics.total_return * 100.0 << "%"
+                  << metrics.total_return * 100.0 << "%"
                   << "\t"
                   << std::fixed << std::setprecision(4)
-                  << result.metrics.max_drawdown * 100.0 << "%"
+                  << metrics.max_drawdown * 100.0 << "%"
                   << "\t"
                   << std::fixed << std::setprecision(2)
-                  << result.metrics.total_costs
+                  << metrics.total_costs
                   << "\t"
                   << std::fixed << std::setprecision(0)
-                  << result.metrics.number_of_trades
+                  << metrics.number_of_trades
                   << "\t";
 
         bool first = true;
-        for (const auto& [name, value] : result.parameters) {
+        for (const auto& [name, value] :
+             ranked[i]->result.parameters) {
             if (!first) {
                 std::cout << ", ";
             }
@@ -352,14 +201,15 @@ void print_ranked_results(const std::vector<JobResult>& results) {
     }
 
     std::cout << "\nBest configuration: "
-              << ranked.front()->job_id
+              << ranked.front()->result.job_id
               << " (Sharpe " << std::fixed << std::setprecision(4)
-              << ranked.front()->metrics.sharpe_ratio << ", total return "
+              << ranked.front()->result.metrics.sharpe_ratio
+              << ", total return "
               << std::fixed << std::setprecision(4)
-              << ranked.front()->metrics.total_return * 100.0 << "%)\n";
+              << ranked.front()->result.metrics.total_return * 100.0
+              << "%)\n";
 }
 
-// Prints a PerformanceStats report to stdout.
 void print_performance_stats(const PerformanceStats& stats) {
     if (stats.jobs_completed == 0) {
         std::cout << "\nNo jobs completed; skipping performance stats.\n";
@@ -385,135 +235,182 @@ void print_performance_stats(const PerformanceStats& stats) {
     std::cout << "CPU efficiency:    " << stats.cpu_efficiency << "%\n";
 }
 
-}  // namespace
+void print_experiment_header(
+    const ExperimentDataSummary& summary,
+    std::size_t jobs_total,
+    std::size_t max_concurrent
+) {
+    std::cout << "Successfully loaded " << summary.trading_days
+              << " trading days.\n";
+    std::cout << "First date: " << summary.first_date << '\n';
+    std::cout << "Last date:  " << summary.last_date << '\n';
 
-int main() {
-    try {
-        const auto dataset = load_market_data(
-            "data/market/sp500_1950_2018.csv"
+    std::cout << "Running " << jobs_total
+              << " parameter combinations concurrently across all "
+              << "strategies (up to " << max_concurrent
+              << " jobs at a time).\n";
+}
+
+void print_experiment_results(const ExperimentResult& result) {
+    std::cout << "Experiment: " << result.experiment_id << '\n';
+
+    std::size_t printed = 0;
+    for (const auto& outcome : result.results) {
+        if (!outcome.ok) {
+            std::cerr << "Job " << outcome.job.job_id
+                      << " failed: " << outcome.error << '\n';
+            continue;
+        }
+
+        ++printed;
+        std::cout << "\n--- Result " << printed << " ---\n";
+        std::cout << "Strategy: " << outcome.job.strategy_type << '\n';
+        print_result(outcome.result);
+    }
+
+    std::cout << "\nCompleted " << result.summary.jobs_completed << " of "
+              << result.summary.jobs_total << " backtests in "
+              << result.summary.wall_seconds << " seconds.\n";
+
+    print_ranked_results(result.results);
+    print_performance_stats(result.summary.performance);
+}
+
+std::string read_stream(std::istream& stream) {
+    std::ostringstream contents;
+    contents << stream.rdbuf();
+    return contents.str();
+}
+
+std::string read_file(const std::string& path) {
+    if (path == "-") {
+        return read_stream(std::cin);
+    }
+
+    std::ifstream stream(path);
+    if (!stream) {
+        throw std::runtime_error(
+            "Could not open experiment file '" + path + "'"
         );
+    }
 
-        std::cout << "Successfully loaded " << dataset.size()
-                  << " trading days.\n";
-        std::cout << "First date: " << dataset.front().date << '\n';
-        std::cout << "Last date:  " << dataset.back().date << '\n';
-
-        // Build the demo jobs: moving-average crossover, RSI mean-reversion,
-        // and Donchian channel breakout grids, interleaved so all three
-        // strategies run together.
-        const auto jobs = build_demo_jobs();
-        const std::size_t max_concurrent = std::max<std::size_t>(
-            1,
-            std::thread::hardware_concurrency()
+    std::string contents = read_stream(stream);
+    if (!stream.good() && !stream.eof()) {
+        throw std::runtime_error(
+            "Could not read experiment file '" + path + "'"
         );
+    }
 
-        std::cout << "Running " << jobs.size()
-                  << " parameter combinations concurrently across all "
-                  << "strategies (up to " << max_concurrent
-                  << " jobs at a time).\n";
+    return contents;
+}
 
-        const double cpu_start = process_cpu_seconds();
-        const auto t0 = std::chrono::steady_clock::now();
+struct Options {
+    bool json = false;
+    bool help = false;
+    bool has_experiment = false;
+    std::string experiment_path;
+};
 
-        // Keep a sliding window of at most max_concurrent in-flight jobs so
-        // fast and slow runs overlap while concurrency stays bounded by
-        // hardware capacity. Each task is independent: the dataset is
-        // read-only and each task builds its own strategy/config.
-        std::vector<JobOutcome> outcomes;
-        outcomes.reserve(jobs.size());
+Options parse_options(int argc, char* argv[]) {
+    Options options;
 
-        std::vector<std::future<JobOutcome>> in_flight;
-        in_flight.reserve(max_concurrent);
+    for (int i = 1; i < argc; ++i) {
+        const std::string argument = argv[i];
 
-        std::size_t next_job = 0;
-        std::size_t index = 0;
-
-        while (next_job < jobs.size() || !in_flight.empty()) {
-            while (next_job < jobs.size() &&
-                   in_flight.size() < max_concurrent) {
-                ++index;
-                in_flight.push_back(
-                    std::async(
-                        std::launch::async,
-                        run_combination,
-                        std::cref(dataset),
-                        jobs[next_job],
-                        index
-                    )
+        if (argument == "--json") {
+            options.json = true;
+        } else if (argument == "-h" || argument == "--help") {
+            options.help = true;
+        } else if (argument == "-e" || argument == "--experiment") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    argument + " requires a file path (or '-')"
                 );
-                ++next_job;
             }
 
-            // Retire the oldest job before launching another one.
-            outcomes.push_back(in_flight.front().get());
-            in_flight.erase(in_flight.begin());
-        }
-
-        const auto t1 = std::chrono::steady_clock::now();
-        const double cpu_end = process_cpu_seconds();
-
-        const double wall_seconds =
-            std::chrono::duration<double>(t1 - t0).count();
-        const double cpu_seconds = cpu_end - cpu_start;
-
-        // Sort outcomes by index so output is deterministic regardless of
-        // completion order.
-        std::sort(
-            outcomes.begin(),
-            outcomes.end(),
-            [](const JobOutcome& a, const JobOutcome& b) {
-                return a.index < b.index;
-            }
-        );
-
-        std::vector<JobResult> results;
-        results.reserve(outcomes.size());
-
-        for (const auto& outcome : outcomes) {
-            if (!outcome.ok) {
-                std::cerr << "Combination " << outcome.index << " failed: "
-                          << outcome.error << '\n';
-                continue;
-            }
-
-            results.push_back(outcome.result);
-
-            std::cout << "\n--- Result " << outcome.index << " ---\n";
-            print_result(outcome.result);
-        }
-
-        std::cout << "\nCompleted " << results.size() << " of "
-                  << jobs.size() << " backtests in "
-                  << wall_seconds << " seconds.\n";
-
-        print_ranked_results(results);
-
-        // Convert to stats-compatible outcomes and compute performance stats.
-        std::vector<CombinationOutcome> stat_outcomes;
-        stat_outcomes.reserve(outcomes.size());
-        for (const auto& outcome : outcomes) {
-            stat_outcomes.push_back(
-                {
-                    outcome.index,
-                    outcome.ok,
-                    outcome.duration.count()
-                }
+            options.has_experiment = true;
+            options.experiment_path = argv[++i];
+        } else {
+            throw std::invalid_argument(
+                "Unknown argument '" + argument + "'"
             );
         }
+    }
 
-        const PerformanceStats stats = compute_performance_stats(
-            stat_outcomes,
-            wall_seconds,
-            cpu_seconds,
-            max_concurrent
-        );
+    return options;
+}
 
-        print_performance_stats(stats);
+void run_demo(const Options& options) {
+    const ExperimentRequest request = build_demo_experiment();
 
+    if (options.json) {
+        const ExperimentResult result = run_experiment(request);
+        std::cout << experiment_result_to_json(result, true);
+        return;
+    }
+
+    const ExperimentResult result = run_experiment(
+        request,
+        [](const ExperimentDataSummary& summary,
+           std::size_t jobs_total,
+           std::size_t max_concurrent) {
+            print_experiment_header(summary, jobs_total, max_concurrent);
+        }
+    );
+    print_experiment_results(result);
+}
+
+void run_experiment_document(
+    const std::string& request_json,
+    const Options& options
+) {
+    if (options.json) {
+        std::cout << run_experiment_json(request_json, true);
+        return;
+    }
+
+    const ExperimentRequest request =
+        parse_experiment_json(request_json);
+    const ExperimentResult result = run_experiment(
+        request,
+        [](const ExperimentDataSummary& summary,
+           std::size_t jobs_total,
+           std::size_t max_concurrent) {
+            print_experiment_header(summary, jobs_total, max_concurrent);
+        }
+    );
+    print_experiment_results(result);
+}
+
+}  // namespace
+
+int main(int argc, char* argv[]) {
+    try {
+        const Options options = parse_options(argc, argv);
+
+        if (options.help) {
+            std::cout << kUsage;
+            return 0;
+        }
+
+        if (options.has_experiment) {
+            const std::string request_json =
+                read_file(options.experiment_path);
+            run_experiment_document(request_json, options);
+            return 0;
+        }
+
+        run_demo(options);
+        return 0;
+    } catch (const ExperimentValidationError& error) {
+        std::cerr << "Invalid experiment";
+        if (!error.path().empty()) {
+            std::cerr << " at " << error.path();
+        }
+        std::cerr << ": " << error.what() << '\n';
+        return 1;
     } catch (const std::exception& error) {
         std::cerr << "Error: " << error.what() << '\n';
         return 1;
     }
-
-    return 0;
 }

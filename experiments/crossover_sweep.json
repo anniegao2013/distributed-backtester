@@ -1,0 +1,27 @@
+{
+  "$schema": "../schema/experiment.schema.json",
+  "schema_version": 1,
+  "experiment_id": "crossover-sweep",
+  "description": "Small moving-average crossover sweep over SP500.",
+  "data": {
+    "path": "data/market/sp500_1950_2018.csv",
+    "asset": "SP500",
+    "start_date": "2000-01-01",
+    "end_date": "2010-12-31"
+  },
+  "execution": {
+    "initial_cash": 10000.0,
+    "transaction_cost_rate": 0.001,
+    "slippage_rate": 0.0005
+  },
+  "strategies": [
+    {
+      "id": "crossover",
+      "type": "moving_average_crossover",
+      "grid": {
+        "short_window": [20, 50],
+        "long_window": [100, 200]
+      }
+    }
+  ]
+}

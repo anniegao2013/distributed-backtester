@@ -1,0 +1,342 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/backtester-experiment.schema.json",
+  "title": "Distributed Backtester Experiment",
+  "description": "Request document that defines a parameter sweep. The same document is accepted by the CLI (--experiment) and by the run_experiment_json() service entry point.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "experiment_id", "data", "strategies"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this schema, for editor support."
+    },
+    "schema_version": {
+      "const": 1,
+      "description": "Experiment schema version. Only version 1 is supported."
+    },
+    "experiment_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      "description": "Caller-supplied identifier, unique per request, echoed in the response."
+    },
+    "description": {
+      "type": "string",
+      "description": "Free-form description of the experiment."
+    },
+    "data": {
+      "$ref": "#/$defs/data"
+    },
+    "execution": {
+      "$ref": "#/$defs/execution"
+    },
+    "strategies": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Strategy declarations. Each is expanded into one or more jobs, then interleaved round-robin.",
+      "items": {
+        "$ref": "#/$defs/strategy"
+      }
+    },
+    "output": {
+      "$ref": "#/$defs/output"
+    }
+  },
+  "$defs": {
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "asset", "start_date", "end_date"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the OHLCV CSV file, resolved by the backtester process."
+        },
+        "asset": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Symbol used for orders and portfolio accounting."
+        },
+        "start_date": {
+          "$ref": "#/$defs/date",
+          "description": "First bar included in the backtest (warm-up bars before it are still visible to strategies)."
+        },
+        "end_date": {
+          "$ref": "#/$defs/date",
+          "description": "Last bar included in the backtest."
+        }
+      }
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Execution and scheduling settings shared by every job. Omitted fields use the defaults shown.",
+      "properties": {
+        "initial_cash": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 10000.0
+        },
+        "transaction_cost_rate": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0.0,
+          "description": "Commission as a fraction of traded notional (0.001 = 10 bps)."
+        },
+        "slippage_rate": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0.0,
+          "description": "Adverse price movement per fill as a fraction of the bar open (0.0005 = 5 bps)."
+        },
+        "max_concurrent_jobs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1024,
+          "default": 0,
+          "description": "Maximum in-flight jobs. 0 selects the hardware concurrency."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include_trades": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include every filled trade in the response. Off by default because sweeps can be large."
+        }
+      }
+    },
+    "strategy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type"],
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": ["grid"],
+              "properties": {
+                "grid": {
+                  "$ref": "#/$defs/grid"
+                }
+              }
+            },
+            {
+              "required": ["parameters"],
+              "properties": {
+                "parameters": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "description": "One explicit parameter combination."
+                }
+              }
+            }
+          ]
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "moving_average_crossover"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "grid": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["short_window", "long_window"],
+                "properties": {
+                  "short_window": {
+                    "$ref": "#/$defs/periodList"
+                  },
+                  "long_window": {
+                    "$ref": "#/$defs/periodList"
+                  }
+                }
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["short_window", "long_window"],
+                "properties": {
+                  "short_window": {
+                    "$ref": "#/$defs/period"
+                  },
+                  "long_window": {
+                    "$ref": "#/$defs/period"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "rsi_mean_reversion"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "grid": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rsi_period",
+                  "oversold_threshold",
+                  "exit_threshold"
+                ],
+                "properties": {
+                  "rsi_period": {
+                    "$ref": "#/$defs/periodList"
+                  },
+                  "oversold_threshold": {
+                    "$ref": "#/$defs/percentageList"
+                  },
+                  "exit_threshold": {
+                    "$ref": "#/$defs/percentageList"
+                  }
+                }
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "rsi_period",
+                  "oversold_threshold",
+                  "exit_threshold"
+                ],
+                "properties": {
+                  "rsi_period": {
+                    "$ref": "#/$defs/period"
+                  },
+                  "oversold_threshold": {
+                    "$ref": "#/$defs/percentage"
+                  },
+                  "exit_threshold": {
+                    "$ref": "#/$defs/percentage"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "donchian_channel_breakout"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "grid": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["entry_period", "exit_period"],
+                "properties": {
+                  "entry_period": {
+                    "$ref": "#/$defs/periodList"
+                  },
+                  "exit_period": {
+                    "$ref": "#/$defs/periodList"
+                  }
+                }
+              },
+              "parameters": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["entry_period", "exit_period"],
+                "properties": {
+                  "entry_period": {
+                    "$ref": "#/$defs/period"
+                  },
+                  "exit_period": {
+                    "$ref": "#/$defs/period"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$",
+          "description": "Strategy identifier. Job IDs are '<id>-<n>' where n is 1-based within this strategy."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "moving_average_crossover",
+            "rsi_mean_reversion",
+            "donchian_channel_breakout"
+          ]
+        },
+        "grid": {
+          "$ref": "#/$defs/grid"
+        },
+        "parameters": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "number"
+          },
+          "description": "One explicit parameter combination. Per-strategy type rules are applied by the conditionals above."
+        }
+      }
+    },
+    "grid": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "Cartesian product definition: each key maps to the values to sweep.",
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "type": "number"
+        }
+      }
+    },
+    "period": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 1000000
+    },
+    "periodList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/period"
+      }
+    },
+    "percentage": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "percentageList": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/percentage"
+      }
+    }
+  }
+}

@@ -12,7 +12,9 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Donchian channel breakout:** Example long-only strategy that buys when the close breaks above the highest high of the previous `entry_period` bars and sells when it falls below the lowest low of the previous `exit_period` bars.
 - **Backtesting engine:** Simulates trades and tracks portfolio equity over a date range, including warm-up bars.
 - **Portfolio accounting:** Cash, per-symbol positions with average cost, and mark-to-market equity; buys and sells update the holding identified by symbol.
-- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by hardware concurrency. The demo runs the moving-average crossover, RSI mean-reversion, and Donchian channel breakout strategies side by side, sweeping each strategy's parameters.
+- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by configurable concurrency. The demo runs the moving-average crossover, RSI mean-reversion, and Donchian channel breakout strategies side by side, sweeping each strategy's parameters.
+- **JSON experiment schema:** Versioned request documents define the dataset, date range, execution costs, strategy grids, and output options. A matching response schema describes the machine-readable result.
+- **Service-ready entry point:** `run_experiment_json()` accepts a request document and always returns a schema-shaped response, including structured validation errors. The CLI exposes the same path via `--experiment` and stdin.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.
@@ -32,3 +34,18 @@ cmake -S . -B build
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+## Running Experiments
+
+The built-in demo runs with no arguments. To run a JSON-defined experiment:
+
+```bash
+./build/backtester --experiment experiments/crossover_sweep.json
+./build/backtester --experiment experiments/demo.json --json
+cat request.json | ./build/backtester --experiment - --json
+```
+
+The request and response contracts, field reference, job-ID rules, and
+service-integration notes are in [`docs/experiments.md`](docs/experiments.md).
+The JSON Schemas live in [`schema/`](schema) and example requests in
+[`experiments/`](experiments).
