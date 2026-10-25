@@ -36,6 +36,11 @@ add_library(backtester_core
     src/parameter_grid.cpp
     src/performance_stats.cpp
     src/experiment.cpp
+    src/experiment_parse.cpp
+    src/experiment_validate.cpp
+    src/strategy_registry.cpp
+    src/experiment_runner.cpp
+    src/experiment_result_json.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include)
