@@ -254,11 +254,12 @@ requests exit with status `1` and print a diagnostic to stderr.
 
 ## Calling the backtester as a service
 
-`run_experiment_json()` in [`include/experiment.h`](../include/experiment.h) is
-the transport-neutral entry point:
+`run_experiment_json()` in
+[`include/backtester/experiment/experiment.h`](../include/backtester/experiment/experiment.h)
+is the transport-neutral entry point:
 
 ```cpp
-#include "experiment.h"
+#include "experiment/experiment.h"
 
 // request_body is the raw JSON request document.
 std::string response_body = run_experiment_json(request_body, /*pretty=*/false);

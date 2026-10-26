@@ -27,6 +27,32 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Data:** Daily S&P 500 index OHLCV data (1950–2018)
 - **Trading model:** Long-only, fractional shares. Strategies emit signals at a bar's close; the engine converts each signal into an order sized against the current portfolio, fills it at the next bar's open with configurable commission (`transaction_cost_rate`) and adverse slippage (`slippage_rate`), and applies the resulting trade. Open positions are marked to market at the final close.
 
+## Project Layout
+
+```text
+include/backtester/
+  core/          Market data, JSON values, parameter grids, performance stats
+  trading/       Strategy interface, portfolio, execution, backtest engine
+  strategies/    Built-in trading strategies
+  experiment/    Versioned experiment schema and service entry point
+src/
+  core/          Implementations of the core utilities
+  trading/       Implementations of the trading model
+  strategies/    Implementations of the built-in strategies
+  experiment/    Request parsing, validation, execution, and result JSON
+  main.cpp       CLI entry point
+tests/
+  core/          Unit tests for core utilities
+  trading/       Unit and accounting tests for the trading model
+  strategies/    Unit tests for each strategy
+  experiment/    Schema, service, and parallel-execution tests
+  integration/   Real-data, pipeline, and end-to-end tests
+```
+
+Public headers are included relative to `include/backtester`, for example
+`#include "trading/backtest_engine.h"` or
+`#include "experiment/experiment.h"`.
+
 ## Build and Test
 
 ```bash

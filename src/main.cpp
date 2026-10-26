@@ -1,5 +1,5 @@
-#include "experiment.h"
-#include "performance_stats.h"
+#include "experiment/experiment.h"
+#include "core/performance_stats.h"
 
 #include <algorithm>
 #include <cstddef>
