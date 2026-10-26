@@ -1,0 +1,48 @@
+{
+  "$schema": "../schema/experiment.schema.json",
+  "schema_version": 1,
+  "experiment_id": "demo-three-strategy-sweep",
+  "description": "The built-in demo, expressed as a JSON experiment.",
+  "data": {
+    "path": "data/market/sp500_1950_2018.csv",
+    "asset": "SP500",
+    "start_date": "2000-01-01",
+    "end_date": "2010-12-31"
+  },
+  "execution": {
+    "initial_cash": 10000.0,
+    "transaction_cost_rate": 0.001,
+    "slippage_rate": 0.0005,
+    "max_concurrent_jobs": 0
+  },
+  "strategies": [
+    {
+      "id": "crossover",
+      "type": "moving_average_crossover",
+      "grid": {
+        "short_window": [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95],
+        "long_window": [100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250, 260, 270, 280, 290, 300]
+      }
+    },
+    {
+      "id": "rsi",
+      "type": "rsi_mean_reversion",
+      "grid": {
+        "rsi_period": [5, 10, 14, 20],
+        "oversold_threshold": [20, 30],
+        "exit_threshold": [60, 70]
+      }
+    },
+    {
+      "id": "donchian",
+      "type": "donchian_channel_breakout",
+      "grid": {
+        "entry_period": [20, 40, 55],
+        "exit_period": [5, 10, 15]
+      }
+    }
+  ],
+  "output": {
+    "include_trades": false
+  }
+}
