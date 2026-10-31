@@ -26,6 +26,8 @@ endif()
 
 add_library(backtester_core
     # Foundations: data, JSON, parameters, statistics
+    src/core/date.cpp
+    src/core/identifier.cpp
     src/core/json_value.cpp
     src/core/market_data.cpp
     src/core/parameter_grid.cpp
@@ -48,6 +50,13 @@ add_library(backtester_core
     src/experiment/experiment_runner.cpp
     src/experiment/experiment_validate.cpp
     src/experiment/strategy_registry.cpp
+
+    # Coordinator <-> worker wire protocol
+    src/protocol/protocol_envelope.cpp
+    src/protocol/protocol_job_parse.cpp
+    src/protocol/protocol_json.cpp
+    src/protocol/protocol_result_parse.cpp
+    src/protocol/protocol_validate.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -129,6 +138,9 @@ add_backtester_test(
     parallel_execution_tests experiment/parallel_execution_test.cpp
 )
 
+# Coordinator <-> worker wire protocol
+add_backtester_test(protocol_tests protocol/protocol_test.cpp)
+
 # Integration tests
 add_backtester_test(
     market_data_integration_test
@@ -138,6 +150,11 @@ add_backtester_test(
 add_backtester_test(
     parameter_grid_backtest_integration_test
     integration/parameter_grid_backtest_integration_test.cpp
+)
+add_backtester_test(
+    protocol_examples_test
+    integration/protocol_examples_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 # End-to-end test: runs the backtester executable against real market data.

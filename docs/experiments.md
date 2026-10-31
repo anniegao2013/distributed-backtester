@@ -19,6 +19,9 @@ Every document declares `"schema_version": 1`. The backtester rejects any
 other value. Additive, backward-compatible fields may be added to version 1;
 breaking changes will bump the version.
 
+Experiment documents use `schema_version`. Worker protocol messages use a
+separate `protocol_version`; see [`docs/protocol.md`](protocol.md).
+
 ## Request
 
 ```json
@@ -305,3 +308,13 @@ ExperimentResult result = run_experiment(request);       // loads data + runs
 | [`experiments/crossover_sweep.json`](../experiments/crossover_sweep.json) | A small parameter grid. |
 | [`experiments/rsi_sweep.json`](../experiments/rsi_sweep.json) | Explicit execution costs and concurrency. |
 | [`experiments/donchian_breakout.json`](../experiments/donchian_breakout.json) | A single explicit configuration with trades included. |
+
+## Distributed execution
+
+An experiment document is the coordinator's input. Once expanded, each job can
+be sent to a worker as a `backtest_job` message, and the worker replies with a
+`backtest_result` that echoes the job's `message_id`, identity, and parameters.
+The wire contract is documented in [`docs/protocol.md`](protocol.md) and defined
+by [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json) and
+[`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json).
+The TCP transport and scheduling layer are not implemented yet.

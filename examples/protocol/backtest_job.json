@@ -1,0 +1,30 @@
+{
+  "$schema": "../../schema/backtest_job.schema.json",
+  "protocol_version": 1,
+  "type": "backtest_job",
+  "message_id": "crossover-sweep:crossover-1:0001",
+  "job": {
+    "experiment_id": "crossover-sweep",
+    "job_id": "crossover-1",
+    "strategy_id": "crossover",
+    "strategy_type": "moving_average_crossover",
+    "parameters": {
+      "short_window": 20,
+      "long_window": 100
+    },
+    "data": {
+      "path": "data/market/sp500_1950_2018.csv",
+      "asset": "SP500",
+      "start_date": "2000-01-01",
+      "end_date": "2010-12-31"
+    },
+    "execution": {
+      "initial_cash": 10000.0,
+      "transaction_cost_rate": 0.001,
+      "slippage_rate": 0.0005
+    },
+    "output": {
+      "include_trades": true
+    }
+  }
+}

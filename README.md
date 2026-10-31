@@ -15,6 +15,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by configurable concurrency. The demo runs the moving-average crossover, RSI mean-reversion, and Donchian channel breakout strategies side by side, sweeping each strategy's parameters.
 - **JSON experiment schema:** Versioned request documents define the dataset, date range, execution costs, strategy grids, and output options. A matching response schema describes the machine-readable result.
 - **Service-ready entry point:** `run_experiment_json()` accepts a request document and always returns a schema-shaped response, including structured validation errors. The CLI exposes the same path via `--experiment` and stdin.
+- **Worker protocol:** Versioned JSON messages for coordinator-to-worker backtest jobs and worker-to-coordinator results, with strict parsing, validation, and JSON Schemas. Transport (TCP) is not implemented yet.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.
@@ -31,27 +32,31 @@ A C++17 framework for evaluating trading strategies against historical market da
 
 ```text
 include/backtester/
-  core/          Market data, JSON values, parameter grids, performance stats
+  core/          Market data, JSON values, identifiers, dates, parameter grids, stats
   trading/       Strategy interface, portfolio, execution, backtest engine
   strategies/    Built-in trading strategies
   experiment/    Versioned experiment schema and service entry point
+  protocol/      Coordinator <-> worker wire message types
 src/
   core/          Implementations of the core utilities
   trading/       Implementations of the trading model
   strategies/    Implementations of the built-in strategies
   experiment/    Request parsing, validation, execution, and result JSON
+  protocol/      Job/result parsing, validation, and serialization
   main.cpp       CLI entry point
 tests/
   core/          Unit tests for core utilities
   trading/       Unit and accounting tests for the trading model
   strategies/    Unit tests for each strategy
   experiment/    Schema, service, and parallel-execution tests
-  integration/   Real-data, pipeline, and end-to-end tests
+  protocol/      Wire message parsing, validation, and round-trip tests
+  integration/   Real-data, protocol-example, pipeline, and end-to-end tests
 ```
 
 Public headers are included relative to `include/backtester`, for example
-`#include "trading/backtest_engine.h"` or
-`#include "experiment/experiment.h"`.
+`#include "trading/backtest_engine.h"`,
+`#include "experiment/experiment.h"`, or
+`#include "protocol/protocol.h"`.
 
 ## Build and Test
 
@@ -75,3 +80,13 @@ The request and response contracts, field reference, job-ID rules, and
 service-integration notes are in [`docs/experiments.md`](docs/experiments.md).
 The JSON Schemas live in [`schema/`](schema) and example requests in
 [`experiments/`](experiments).
+
+## Distributed Execution
+
+The coordinator/worker split is not implemented yet, but the wire contract is
+defined and tested. A coordinator expands an experiment into
+`backtest_job` messages; each worker replies with a `backtest_result` carrying
+the same `message_id`. See [`docs/protocol.md`](docs/protocol.md), the message
+schemas in [`schema/backtest_job.schema.json`](schema/backtest_job.schema.json)
+and [`schema/backtest_result.schema.json`](schema/backtest_result.schema.json),
+and the examples in [`examples/protocol/`](examples/protocol).

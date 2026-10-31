@@ -1,0 +1,323 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/backtester-backtest-result.schema.json",
+  "title": "Distributed Backtester Backtest Result",
+  "description": "Worker-to-coordinator reply. A valid job envelope always produces a backtest_result, even when the job itself is invalid. A malformed or unroutable envelope produces a protocol_error.",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/resultMessage"
+    },
+    {
+      "$ref": "#/$defs/protocolError"
+    }
+  ],
+  "$defs": {
+    "messageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "experimentId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "parameters": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_return",
+        "sharpe_ratio",
+        "max_drawdown",
+        "number_of_trades",
+        "total_costs"
+      ],
+      "properties": {
+        "total_return": {
+          "type": "number"
+        },
+        "sharpe_ratio": {
+          "type": "number"
+        },
+        "max_drawdown": {
+          "type": "number"
+        },
+        "number_of_trades": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "total_costs": {
+          "type": "number"
+        }
+      }
+    },
+    "trade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "symbol",
+        "side",
+        "quantity",
+        "fill_price",
+        "commission",
+        "slippage_cost"
+      ],
+      "properties": {
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        },
+        "side": {
+          "enum": ["buy", "sell"]
+        },
+        "quantity": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "fill_price": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "commission": {
+          "type": "number",
+          "minimum": 0
+        },
+        "slippage_cost": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "resultError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": {
+          "enum": ["validation_error", "runtime_error"]
+        },
+        "path": {
+          "type": "string",
+          "description": "JSONPath-like location of the invalid field, when known."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "experiment_id",
+        "job_id",
+        "strategy_id",
+        "strategy_type",
+        "parameters",
+        "status",
+        "duration_seconds"
+      ],
+      "properties": {
+        "experiment_id": {
+          "$ref": "#/$defs/experimentId"
+        },
+        "job_id": {
+          "$ref": "#/$defs/jobId"
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/jobId"
+        },
+        "strategy_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "parameters": {
+          "$ref": "#/$defs/parameters"
+        },
+        "status": {
+          "enum": ["completed", "failed", "invalid"]
+        },
+        "duration_seconds": {
+          "type": "number",
+          "minimum": 0
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        },
+        "trades": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/trade"
+          }
+        },
+        "error": {
+          "$ref": "#/$defs/resultError"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "completed"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["metrics"],
+            "not": {
+              "required": ["error"]
+            }
+          },
+          "else": {
+            "required": ["error"],
+            "not": {
+              "anyOf": [
+                {
+                  "required": ["metrics"]
+                },
+                {
+                  "required": ["trades"]
+                }
+              ]
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "invalid"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "type": {
+                    "const": "validation_error"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "failed"
+              }
+            },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": {
+              "error": {
+                "properties": {
+                  "type": {
+                    "const": "runtime_error"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "resultMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "type", "message_id", "result"],
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "type": {
+          "const": "backtest_result"
+        },
+        "message_id": {
+          "$ref": "#/$defs/messageId"
+        },
+        "worker_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "description": "Optional worker identity, for logs and diagnostics."
+        },
+        "result": {
+          "$ref": "#/$defs/result"
+        }
+      }
+    },
+    "protocolErrorDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": {
+          "enum": [
+            "json_parse_error",
+            "unsupported_version",
+            "unknown_message_type",
+            "validation_error"
+          ]
+        },
+        "path": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "protocolError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "type", "error"],
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "type": {
+          "const": "protocol_error"
+        },
+        "message_id": {
+          "$ref": "#/$defs/messageId",
+          "description": "Echoed when the envelope was readable; omitted otherwise."
+        },
+        "error": {
+          "$ref": "#/$defs/protocolErrorDetail"
+        }
+      }
+    }
+  }
+}

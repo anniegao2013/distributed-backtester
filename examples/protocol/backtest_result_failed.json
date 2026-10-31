@@ -1,0 +1,23 @@
+{
+  "$schema": "../../schema/backtest_result.schema.json",
+  "protocol_version": 1,
+  "type": "backtest_result",
+  "message_id": "crossover-sweep:crossover-1:0001",
+  "worker_id": "worker-a",
+  "result": {
+    "experiment_id": "crossover-sweep",
+    "job_id": "crossover-1",
+    "strategy_id": "crossover",
+    "strategy_type": "moving_average_crossover",
+    "parameters": {
+      "short_window": 20,
+      "long_window": 100
+    },
+    "status": "failed",
+    "duration_seconds": 0.004,
+    "error": {
+      "type": "runtime_error",
+      "message": "Market data file 'data/market/sp500_1950_2018.csv' was not found on worker-a"
+    }
+  }
+}

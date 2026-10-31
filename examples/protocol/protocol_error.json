@@ -1,0 +1,11 @@
+{
+  "$schema": "../../schema/backtest_result.schema.json",
+  "protocol_version": 1,
+  "type": "protocol_error",
+  "message_id": "crossover-sweep:crossover-1:0001",
+  "error": {
+    "type": "unsupported_version",
+    "path": "$.protocol_version",
+    "message": "Unsupported protocol_version; this build speaks version 1"
+  }
+}
