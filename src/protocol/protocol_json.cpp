@@ -223,6 +223,24 @@ std::string protocol_error_to_json(
     return serialize_json(JsonValue(std::move(root)), pretty);
 }
 
+std::string shutdown_to_json(
+    const ShutdownMessage& message,
+    bool pretty
+) {
+    protocol_detail::validate_shutdown_message(message);
+
+    JsonObject root;
+    root.emplace("protocol_version", message.protocol_version);
+    root.emplace("type", "shutdown");
+    root.emplace("message_id", message.message_id);
+
+    if (!message.reason.empty()) {
+        root.emplace("reason", message.reason);
+    }
+
+    return serialize_json(JsonValue(std::move(root)), pretty);
+}
+
 std::string protocol_message_to_json(
     const ProtocolMessage& message,
     bool pretty
@@ -236,8 +254,12 @@ std::string protocol_message_to_json(
         return backtest_result_to_json(*result, pretty);
     }
 
-    const auto& error = std::get<ProtocolErrorMessage>(message);
-    return protocol_error_to_json(error, pretty);
+    if (const auto* error =
+            std::get_if<ProtocolErrorMessage>(&message)) {
+        return protocol_error_to_json(*error, pretty);
+    }
+
+    return shutdown_to_json(std::get<ShutdownMessage>(message), pretty);
 }
 
 ProtocolErrorMessage make_protocol_error(

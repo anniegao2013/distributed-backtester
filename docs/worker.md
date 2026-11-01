@@ -15,34 +15,41 @@ Each iteration of the loop performs the steps below:
 
 1. **Connect.** `WorkerTransport::connect()` establishes the connection. For
    stdio this only checks that both streams are usable.
-2. **Wait for a job.** `receive()` blocks until one complete JSON message
+2. **Wait for a message.** `receive()` blocks until one complete JSON message
    arrives, or returns `std::nullopt` when the coordinator closes the stream.
-3. **Deserialize.** `parse_protocol_envelope()` reads the envelope;
-   `parse_backtest_job_json()` validates and parses the payload.
-4. **Validate.** The worker checks that `strategy_type` is registered and that
-   the parameter set is complete and in range. This is worker-side validation:
-   the protocol layer accepts any finite parameter map.
+3. **Deserialize.** `parse_protocol_envelope()` reads the envelope. A
+   `backtest_job` is parsed with `parse_backtest_job_json()`; a `shutdown` is
+   parsed with `parse_shutdown_json()`.
+4. **Validate.** For a job, the worker checks that `strategy_type` is registered
+   and that the parameter set is complete and in range. This is worker-side
+   validation: the protocol layer accepts any finite parameter map.
 5. **Run.** `load_market_data()` reads the dataset, `create_strategy()` builds
    the strategy, and `run_backtest()` executes the existing engine.
 6. **Serialize.** `make_result_message()` echoes the job identity and
    `backtest_result_to_json()` validates and writes the reply.
 7. **Send.** `send()` hands exactly one message back to the coordinator.
-8. **Repeat** until the transport closes.
+8. **Repeat** until a valid `shutdown` arrives or the connection closes.
+
+A `shutdown` takes effect between jobs. The worker finishes the job it is
+already running, sends its result, and then exits without replying to the
+shutdown. If jobs are already queued, they are not processed. An invalid
+shutdown payload produces a `protocol_error` and does not stop the loop.
 
 ## Error mapping
 
-Every received message produces exactly one reply.
+Every received job produces exactly one reply. A `shutdown` produces no reply.
 
 | Input | Reply |
 | --- | --- |
 | Valid job that runs | `backtest_result`, status `completed` |
 | Unknown strategy type, missing or out-of-range parameter | `backtest_result`, status `invalid`, error type `validation_error` |
 | Missing/unreadable data, no bars in range, engine failure | `backtest_result`, status `failed`, error type `runtime_error` |
+| Valid `shutdown` | No reply; the loop stops |
 | Not a single valid JSON document | `protocol_error`, type `json_parse_error` |
 | Readable envelope but invalid/missing envelope fields | `protocol_error`, type `validation_error` |
 | `protocol_version` not supported | `protocol_error`, type `unsupported_version`, `message_id` echoed when readable |
-| Envelope type other than `backtest_job` | `protocol_error`, type `unknown_message_type` |
-| Envelope valid, job payload malformed | `protocol_error`, type `validation_error`, `message_id` echoed |
+| Envelope type other than `backtest_job` or `shutdown` | `protocol_error`, type `unknown_message_type` |
+| Envelope valid, job or shutdown payload malformed | `protocol_error`, type `validation_error`, `message_id` echoed |
 
 The distinction matters to the coordinator: an `invalid` result means the job
 itself was bad, so retrying it elsewhere will fail the same way. A `failed`
@@ -85,19 +92,31 @@ untrusted boundaries.
 ## Usage
 
 ```bash
-# One compact job per line, one compact reply per line.
-./build/backtester_worker --worker-id worker-a < jobs.jsonl > results.jsonl
+# One compact message per line. The worker runs until it reads a shutdown
+# message or reaches end of input.
+./build/backtester_worker --worker-id worker-a < messages.jsonl > results.jsonl
 
 # Diagnostics are separate from the protocol stream.
-./build/backtester_worker --worker-id worker-a < jobs.jsonl 2> worker.log
+./build/backtester_worker --worker-id worker-a < messages.jsonl 2> worker.log
 
 # Help.
 ./build/backtester_worker --help
 ```
 
-The process exits `0` at end of input and `1` on a configuration or transport
-error. A malformed message is not fatal: it produces a `protocol_error` and the
-loop continues.
+A shutdown line looks like this (compact in the stream, pretty here):
+
+```json
+{
+  "protocol_version": 1,
+  "type": "shutdown",
+  "message_id": "run-1:shutdown:0001",
+  "reason": "run complete"
+}
+```
+
+The process exits `0` at end of input or after a shutdown, and `1` on a
+configuration or transport error. A malformed message is not fatal: it produces
+a `protocol_error` and the loop continues.
 
 Job paths are resolved in the worker's environment. Version 1 assumes shared
 storage, such as a mounted volume, so the coordinator and worker see the same

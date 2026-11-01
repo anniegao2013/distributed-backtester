@@ -166,6 +166,56 @@ int main() {
             return 1;
         }
 
+        // A shutdown message stops the loop without a reply; a job queued
+        // after it must not run.
+        ShutdownMessage shutdown;
+        shutdown.message_id = "worker-e2e:shutdown:0001";
+        shutdown.reason = "run complete";
+
+        write_file(
+            input_path,
+            backtest_job_to_json(first, false) + "\n" +
+                shutdown_to_json(shutdown, false) + "\n" +
+                backtest_job_to_json(second, false) + "\n"
+        );
+
+        const int shutdown_exit = run_command(
+            "'" + executable +
+            "' < '" + input_path +
+            "' > '" + output_path +
+            "' 2> '" + error_path + "'"
+        );
+
+        if (shutdown_exit != 0) {
+            std::cerr << "Worker failed on shutdown\n";
+            std::cerr << read_file(error_path) << '\n';
+            return 1;
+        }
+
+        const std::vector<std::string> shutdown_lines =
+            split_lines(read_file(output_path));
+
+        if (shutdown_lines.size() != 1) {
+            std::cerr << "Shutdown must produce no reply; expected one "
+                         "result, got " << shutdown_lines.size() << '\n';
+            return 1;
+        }
+
+        const BacktestResultMessage shutdown_reply =
+            parse_backtest_result_json(shutdown_lines.front());
+
+        if (shutdown_reply.message_id != first.message_id ||
+            shutdown_reply.result.status != "completed") {
+            std::cerr << "The job before shutdown must still complete\n";
+            return 1;
+        }
+
+        if (read_file(error_path).find("shutdown requested: run complete") ==
+            std::string::npos) {
+            std::cerr << "Worker did not log the shutdown reason\n";
+            return 1;
+        }
+
         // A malformed line must produce one protocol_error, and the process
         // must still exit cleanly at end of input.
         write_file(input_path, "{not json\n");

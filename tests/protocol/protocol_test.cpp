@@ -190,6 +190,15 @@ std::string error_document() {
 })";
 }
 
+std::string shutdown_document() {
+    return R"({
+  "protocol_version": 1,
+  "type": "shutdown",
+  "message_id": "run-1:shutdown:0001",
+  "reason": "run complete"
+})";
+}
+
 void expect_validation_with(
     const std::function<void(const std::string&)>& parse,
     const std::string& text,
@@ -896,6 +905,88 @@ void test_protocol_error_rejects_bad_type() {
     );
 }
 
+void test_shutdown_round_trip() {
+    const ShutdownMessage message =
+        parse_shutdown_json(shutdown_document());
+
+    expect(message.protocol_version == 1, "shutdown version");
+    expect(
+        message.message_id == "run-1:shutdown:0001",
+        "shutdown message id"
+    );
+    expect(message.reason == "run complete", "shutdown reason");
+
+    const std::string serialized = shutdown_to_json(message, false);
+    const ShutdownMessage reparsed = parse_shutdown_json(serialized);
+
+    expect(
+        serialized.find("\"type\":\"shutdown\"") != std::string::npos,
+        "serialized shutdown type"
+    );
+    expect(
+        reparsed.message_id == message.message_id &&
+            reparsed.reason == message.reason,
+        "shutdown round-trip"
+    );
+
+    const ProtocolMessage dispatched =
+        parse_protocol_message_json(shutdown_document());
+    expect(
+        std::holds_alternative<ShutdownMessage>(dispatched),
+        "dispatch should select a shutdown"
+    );
+
+    // A reason is optional.
+    const ShutdownMessage without_reason = parse_shutdown_json(
+        replace_once(shutdown_document(), R"(,
+  "reason": "run complete")", "")
+    );
+    expect(
+        without_reason.reason.empty(),
+        "omitted reason stays empty"
+    );
+
+    expect_validation_with(
+        [](const std::string& document) {
+            (void)parse_shutdown_json(document);
+        },
+        replace_once(
+            shutdown_document(),
+            R"("message_id": "run-1:shutdown:0001",)",
+            ""
+        ),
+        "$",
+        "Missing required field 'message_id'"
+    );
+
+    expect_validation_with(
+        [](const std::string& document) {
+            (void)parse_shutdown_json(document);
+        },
+        replace_once(
+            shutdown_document(),
+            R"("reason": "run complete")",
+            R"("reason": "" )"
+        ),
+        "$.reason",
+        "must not be empty"
+    );
+
+    ShutdownMessage invalid;
+    invalid.message_id = "";
+    bool serializer_threw = false;
+    try {
+        (void)shutdown_to_json(invalid, false);
+    } catch (const ProtocolValidationError& error) {
+        serializer_threw = true;
+        expect(
+            error.path() == "$.message_id",
+            "shutdown serializer validates message id"
+        );
+    }
+    expect(serializer_threw, "shutdown serializer must reject a bad id");
+}
+
 void test_envelope() {
     const ProtocolEnvelope envelope =
         parse_protocol_envelope(job_document());
@@ -1004,6 +1095,7 @@ int main() {
         "protocol error rejects bad type",
         test_protocol_error_rejects_bad_type
     );
+    run_test("shutdown parses and round-trips", test_shutdown_round_trip);
     run_test("envelope parses", test_envelope);
     run_test("unknown message type rejected", test_unknown_message_type);
     run_test(

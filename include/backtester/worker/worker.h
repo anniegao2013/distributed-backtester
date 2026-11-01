@@ -57,6 +57,7 @@ struct WorkerStats {
     std::size_t jobs_failed = 0;
     std::size_t jobs_invalid = 0;
     std::size_t protocol_errors = 0;
+    std::size_t shutdowns_received = 0;
 };
 
 // The outcome of running one job. `status` uses the wire vocabulary:
@@ -85,10 +86,11 @@ BacktestResultMessage make_result_message(
     const WorkerJobOutcome& outcome
 );
 
-// Connects, then loops until the transport is closed. Every received message
-// produces exactly one reply:
+// Connects, then loops until a shutdown message arrives or the transport is
+// closed. Every received message produces exactly one reply:
 //
 //   valid job          -> backtest_result (completed, failed, or invalid)
+//   shutdown           -> no reply; the loop stops after the current job
 //   malformed bytes    -> protocol_error json_parse_error
 //   bad envelope       -> protocol_error validation_error
 //   unsupported version-> protocol_error unsupported_version

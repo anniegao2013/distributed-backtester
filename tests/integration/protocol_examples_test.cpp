@@ -56,6 +56,9 @@ int main() {
         const ProtocolErrorMessage error = parse_protocol_error_json(
             read_file("examples/protocol/protocol_error.json")
         );
+        const ShutdownMessage shutdown = parse_shutdown_json(
+            read_file("examples/protocol/shutdown.json")
+        );
 
         expect(
             result.message_id == job.message_id,
@@ -111,6 +114,7 @@ int main() {
         (void)parse_protocol_error_json(
             protocol_error_to_json(error, false)
         );
+        (void)parse_shutdown_json(shutdown_to_json(shutdown, false));
 
         std::cout << "[PASS] protocol examples parse and round-trip\n";
         return 0;

@@ -555,6 +555,23 @@ void validate_error_message(const ProtocolErrorMessage& message) {
     }
 }
 
+void validate_shutdown_message(const ShutdownMessage& message) {
+    const std::string root = kRootPath;
+
+    if (message.protocol_version != kBacktestProtocolVersion) {
+        fail(
+            child_path(root, "protocol_version"),
+            "Unsupported protocol_version; this build speaks version " +
+                std::to_string(kBacktestProtocolVersion)
+        );
+    }
+
+    validate_message_id(
+        message.message_id,
+        child_path(root, "message_id")
+    );
+}
+
 }  // namespace protocol_detail
 
 ProtocolValidationError::ProtocolValidationError(

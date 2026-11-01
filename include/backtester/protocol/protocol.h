@@ -17,11 +17,12 @@
 // and scheduling are not part of it. A transport adapter carries exactly one
 // UTF-8 JSON document per message.
 //
-// Three message types share a small envelope:
+// Four message types share a small envelope:
 //
 //   backtest_job      coordinator -> worker  (one fully-expanded backtest)
 //   backtest_result   worker -> coordinator  (outcome of one job)
 //   protocol_error    worker -> coordinator  (envelope could not be processed)
+//   shutdown          coordinator -> worker  (graceful stop after current job)
 //
 // `message_id` is the correlation key. It is chosen by the sender, must be
 // unique for the lifetime of a run, and is echoed by the receiver so a reply
@@ -82,6 +83,16 @@ struct BacktestJobMessage {
     BacktestJob job;
 };
 
+// Coordinator -> worker control message. The worker finishes the job it is
+// already running, if any, then stops accepting messages and closes its side
+// of the connection. No reply is defined: the coordinator observes the close.
+// `reason` is optional and exists for logs and diagnostics.
+struct ShutdownMessage {
+    int protocol_version = kBacktestProtocolVersion;
+    std::string message_id;
+    std::string reason;
+};
+
 // A structured failure attached to a result. `type` is "validation_error" for
 // status "invalid" and "runtime_error" for status "failed".
 struct BacktestResultError {
@@ -138,7 +149,8 @@ struct ProtocolErrorMessage {
 using ProtocolMessage = std::variant<
     BacktestJobMessage,
     BacktestResultMessage,
-    ProtocolErrorMessage
+    ProtocolErrorMessage,
+    ShutdownMessage
 >;
 
 // Envelope metadata, readable before the payload is parsed. This lets a
@@ -161,6 +173,7 @@ ProtocolEnvelope parse_protocol_envelope(const std::string& text);
 BacktestJobMessage parse_backtest_job_json(const std::string& text);
 BacktestResultMessage parse_backtest_result_json(const std::string& text);
 ProtocolErrorMessage parse_protocol_error_json(const std::string& text);
+ShutdownMessage parse_shutdown_json(const std::string& text);
 
 // Dispatches on the envelope `type` and parses the corresponding payload.
 // Throws ProtocolValidationError for an unknown message type.
@@ -181,6 +194,11 @@ std::string backtest_result_to_json(
 
 std::string protocol_error_to_json(
     const ProtocolErrorMessage& message,
+    bool pretty = true
+);
+
+std::string shutdown_to_json(
+    const ShutdownMessage& message,
     bool pretty = true
 );
 

@@ -33,11 +33,13 @@ void validate_worker_id(
 void validate_job_message(const BacktestJobMessage& message);
 void validate_result_message(const BacktestResultMessage& message);
 void validate_error_message(const ProtocolErrorMessage& message);
+void validate_shutdown_message(const ShutdownMessage& message);
 
 // Document parsers shared by the type-specific entry points and the
 // dispatcher. Each expects an already-parsed root object.
 BacktestJobMessage parse_job_message_document(const JsonValue& root);
 BacktestResultMessage parse_result_message_document(const JsonValue& root);
 ProtocolErrorMessage parse_error_message_document(const JsonValue& root);
+ShutdownMessage parse_shutdown_message_document(const JsonValue& root);
 
 }  // namespace protocol_detail

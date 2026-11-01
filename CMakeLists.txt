@@ -56,6 +56,7 @@ add_library(backtester_core
     src/protocol/protocol_job_parse.cpp
     src/protocol/protocol_json.cpp
     src/protocol/protocol_result_parse.cpp
+    src/protocol/protocol_shutdown_parse.cpp
     src/protocol/protocol_validate.cpp
 
     # Worker loop and its local development transport

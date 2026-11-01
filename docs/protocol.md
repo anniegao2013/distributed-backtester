@@ -8,6 +8,7 @@ uses a line-oriented stdio transport for local development.
 
 - Job schema: [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json)
 - Result schema: [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json)
+- Shutdown schema: [`schema/shutdown.schema.json`](../schema/shutdown.schema.json)
 - Examples: [`examples/protocol/`](../examples/protocol)
 - C++ API: [`include/backtester/protocol/protocol.h`](../include/backtester/protocol/protocol.h)
 
@@ -23,12 +24,14 @@ experiment request
   -> worker validates and runs the backtest
   -> one backtest_result per job, echoing message_id
   -> coordinator aggregates results into the experiment response
+  -> coordinator sends one shutdown when the run is complete
+  -> worker finishes the current job and closes the connection
 ```
 
 A job is atomic. A worker returns exactly one `backtest_result` for every
-readable `backtest_job` envelope, including jobs it rejects before execution.
-A `protocol_error` is reserved for messages whose envelope cannot be processed
-at all.
+readable `backtest_job` envelope, including jobs it rejects before execution. A
+`protocol_error` is reserved for messages whose envelope cannot be processed
+at all. A `shutdown` is a control message and produces no reply.
 
 ## Envelope
 
@@ -38,7 +41,7 @@ Every message has these top-level fields:
 | --- | --- | --- |
 | `$schema` | No | Optional URI for editor tooling. Ignored by the parser. |
 | `protocol_version` | Yes | Must be `1`. |
-| `type` | Yes | `backtest_job`, `backtest_result`, or `protocol_error`. |
+| `type` | Yes | `backtest_job`, `backtest_result`, `protocol_error`, or `shutdown`. |
 | `message_id` | Job/result: yes; error: no | Correlation key. Starts with a letter or digit, then letters, digits, `.`, `_`, `-`, or `:`; at most 128 characters. |
 
 `message_id` is chosen by the sender and echoed by the receiver. It is the
@@ -203,6 +206,32 @@ separately.
 `error.path` uses a JSONPath-like expression rooted at `$`, for example
 `$.job.parameters.short_window`.
 
+## `shutdown`
+
+Coordinator-to-worker control message. It asks the worker to finish the job it
+is already running, if any, stop accepting new messages, and close its side of
+the connection. No reply is defined; the coordinator observes the close.
+
+```json
+{
+  "$schema": "../schema/shutdown.schema.json",
+  "protocol_version": 1,
+  "type": "shutdown",
+  "message_id": "crossover-sweep:shutdown:0001",
+  "reason": "experiment run complete"
+}
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `message_id` | Yes | Correlation key, recorded in worker logs. |
+| `reason` | No | Human-readable explanation for logs and diagnostics. |
+
+A worker also stops when the connection closes, whether the coordinator closes
+it cleanly or the transport reports an error. Jobs queued after a valid
+`shutdown` are not processed. An invalid `shutdown` payload produces a
+`protocol_error` and does not stop the worker.
+
 ## `protocol_error`
 
 Returned when the envelope itself cannot be processed. The worker should not
@@ -228,7 +257,7 @@ attempt to parse a job payload in this case.
 | --- | --- |
 | `json_parse_error` | The bytes were not a single valid JSON document. |
 | `unsupported_version` | `protocol_version` was missing or not `1`. |
-| `unknown_message_type` | `type` was not one of the three known values. |
+| `unknown_message_type` | `type` was not one of the four known values. |
 | `validation_error` | The envelope was readable but malformed, for example a missing `message_id`. |
 
 A future server should map this to a best-effort reply and then decide whether
@@ -307,6 +336,9 @@ try {
         const BacktestJobMessage parsed =
             parse_backtest_job_json(request);
         // Run parsed.job, then build a BacktestResultMessage.
+    } else if (envelope.type == "shutdown") {
+        const ShutdownMessage parsed = parse_shutdown_json(request);
+        // Finish the current job, then stop the loop and close.
     }
 } catch (const JsonParseError& error) {
     // Reply with make_protocol_error("json_parse_error", error.what(), ...).
@@ -316,6 +348,6 @@ try {
 }
 ```
 
-`parse_protocol_message_json()` parses and dispatches all three message types in
+`parse_protocol_message_json()` parses and dispatches all four message types in
 one call. The type-specific parsers are useful when the transport already knows
 what to expect, or when it wants a precise error for a mismatched `type`.

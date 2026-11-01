@@ -65,10 +65,14 @@ ProtocolMessage parse_protocol_message_json(const std::string& text) {
         return protocol_detail::parse_error_message_document(root);
     }
 
+    if (type == "shutdown") {
+        return protocol_detail::parse_shutdown_message_document(root);
+    }
+
     fail(
         std::string(kRootPath) + ".type",
         "Unknown message type '" + type +
             "'; expected 'backtest_job', 'backtest_result', "
-            "or 'protocol_error'"
+            "'protocol_error', or 'shutdown'"
     );
 }

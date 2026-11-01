@@ -454,11 +454,97 @@ void test_loop_returns_invalid_result_for_bad_strategy() {
     );
 }
 
+void test_loop_stops_at_shutdown() {
+    ShutdownMessage shutdown;
+    shutdown.message_id = "worker-test:shutdown:0001";
+    shutdown.reason = "run complete";
+
+    MemoryTransport transport({
+        job_json(make_job("worker-test:ma-1:0001")),
+        shutdown_to_json(shutdown, /*pretty=*/false),
+        job_json(make_job("worker-test:ma-2:0002"))
+    });
+
+    std::vector<std::string> logs;
+    WorkerConfig config;
+    config.log = [&logs](const std::string& line) {
+        logs.push_back(line);
+    };
+
+    const WorkerStats stats = run_worker(transport, config);
+
+    expect(
+        stats.messages_received == 2,
+        "the shutdown must stop the loop before the next job"
+    );
+    expect(stats.jobs_completed == 1, "expected one completed job");
+    expect(
+        stats.shutdowns_received == 1,
+        "expected one shutdown message"
+    );
+    expect(stats.protocol_errors == 0, "shutdown is not an error");
+    expect(
+        transport.sent.size() == 1,
+        "shutdown must not produce a reply"
+    );
+
+    const BacktestResultMessage reply =
+        parse_backtest_result_json(transport.sent.front());
+    expect(
+        reply.message_id == "worker-test:ma-1:0001",
+        "the job before shutdown must complete"
+    );
+
+    bool logged = false;
+    for (const std::string& line : logs) {
+        if (line.find("shutdown requested: run complete") !=
+            std::string::npos) {
+            logged = true;
+        }
+    }
+    expect(logged, "shutdown reason must be logged");
+}
+
+void test_loop_rejects_invalid_shutdown() {
+    MemoryTransport transport({
+        R"({"protocol_version":1,"type":"shutdown",)"
+        R"("message_id":"shutdown-1","reason":""})"
+    });
+
+    const WorkerStats stats = run_worker(transport);
+
+    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(
+        stats.shutdowns_received == 0,
+        "an invalid shutdown must not stop the worker"
+    );
+    expect(transport.sent.size() == 1, "expected one error reply");
+
+    const ProtocolErrorMessage error =
+        parse_protocol_error_json(transport.sent.front());
+
+    expect(
+        error.error.type == "validation_error",
+        "expected validation_error"
+    );
+    expect(
+        error.message_id == "shutdown-1",
+        "shutdown errors must echo message_id"
+    );
+    expect(
+        error.error.path == "$.reason",
+        "expected the reason path, got " + error.error.path
+    );
+}
+
 void test_loop_stops_at_end_of_input() {
+    // A closed connection is equivalent to a shutdown: the worker exits
+    // without sending anything and without treating it as an error.
     MemoryTransport transport({});
     const WorkerStats stats = run_worker(transport);
 
     expect(stats.messages_received == 0, "expected no messages");
+    expect(stats.shutdowns_received == 0, "expected no shutdown message");
     expect(transport.sent.empty(), "expected no replies");
 }
 
@@ -547,7 +633,12 @@ int main() {
         "loop returns invalid result for bad strategy",
         test_loop_returns_invalid_result_for_bad_strategy
     );
-    run_test("loop stops at end of input", test_loop_stops_at_end_of_input);
+    run_test("loop stops at shutdown", test_loop_stops_at_shutdown);
+    run_test(
+        "loop rejects invalid shutdown",
+        test_loop_rejects_invalid_shutdown
+    );
+    run_test("loop stops at connection close", test_loop_stops_at_end_of_input);
     run_test(
         "stdio transport reads and writes",
         test_stdio_transport_reads_and_writes

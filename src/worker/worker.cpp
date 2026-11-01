@@ -104,11 +104,55 @@ WorkerStats run_worker(
             continue;
         }
 
+        if (envelope.type == "shutdown") {
+            try {
+                const ShutdownMessage shutdown =
+                    parse_shutdown_json(*text);
+
+                ++stats.shutdowns_received;
+                log(
+                    config,
+                    "shutdown requested" +
+                        (shutdown.reason.empty()
+                             ? std::string()
+                             : ": " + shutdown.reason)
+                );
+                break;
+            } catch (const JsonParseError& error) {
+                send_protocol_error(
+                    transport,
+                    "json_parse_error",
+                    error.what(),
+                    "",
+                    envelope.message_id
+                );
+                ++stats.protocol_errors;
+                log(config, "rejected shutdown: malformed JSON");
+                continue;
+            } catch (const ProtocolValidationError& error) {
+                send_protocol_error(
+                    transport,
+                    "validation_error",
+                    error.what(),
+                    error.path(),
+                    envelope.message_id
+                );
+                ++stats.protocol_errors;
+                log(
+                    config,
+                    "rejected shutdown: invalid payload at " +
+                        error.path()
+                );
+                continue;
+            }
+        }
+
         if (envelope.type != "backtest_job") {
             send_protocol_error(
                 transport,
                 "unknown_message_type",
-                "Expected 'backtest_job', got '" + envelope.type + "'",
+                "Expected 'backtest_job' or 'shutdown', got '" +
+                    envelope.type + "'",
                 "$.type",
                 envelope.message_id
             );
