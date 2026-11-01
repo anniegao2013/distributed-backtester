@@ -57,6 +57,11 @@ add_library(backtester_core
     src/protocol/protocol_json.cpp
     src/protocol/protocol_result_parse.cpp
     src/protocol/protocol_validate.cpp
+
+    # Worker loop and its local development transport
+    src/worker/stdio_transport.cpp
+    src/worker/worker.cpp
+    src/worker/worker_job.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -70,6 +75,16 @@ add_executable(backtester
 )
 
 target_link_libraries(backtester PRIVATE backtester_core)
+
+# -------------------------------------------------------------------
+# Worker executable
+# -------------------------------------------------------------------
+
+add_executable(backtester_worker
+    src/worker_main.cpp
+)
+
+target_link_libraries(backtester_worker PRIVATE backtester_core)
 
 # -------------------------------------------------------------------
 # Tests
@@ -141,6 +156,12 @@ add_backtester_test(
 # Coordinator <-> worker wire protocol
 add_backtester_test(protocol_tests protocol/protocol_test.cpp)
 
+# Worker loop, job execution, and development transport
+add_backtester_test(
+    worker_tests worker/worker_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
 # Integration tests
 add_backtester_test(
     market_data_integration_test
@@ -166,4 +187,15 @@ add_backtester_test(
 target_compile_definitions(
     backtester_end_to_end_test
     PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester>\""
+)
+
+# End-to-end test: drives the worker executable through its stdio transport.
+add_backtester_test(
+    worker_executable_test
+    integration/worker_executable_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+target_compile_definitions(
+    worker_executable_test
+    PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester_worker>\""
 )

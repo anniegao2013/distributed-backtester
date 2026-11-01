@@ -16,6 +16,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **JSON experiment schema:** Versioned request documents define the dataset, date range, execution costs, strategy grids, and output options. A matching response schema describes the machine-readable result.
 - **Service-ready entry point:** `run_experiment_json()` accepts a request document and always returns a schema-shaped response, including structured validation errors. The CLI exposes the same path via `--experiment` and stdin.
 - **Worker protocol:** Versioned JSON messages for coordinator-to-worker backtest jobs and worker-to-coordinator results, with strict parsing, validation, and JSON Schemas. Transport (TCP) is not implemented yet.
+- **Standalone worker:** `backtester_worker` receives one job, builds the strategy and backtest config, runs the existing engine, and replies with one result. The loop is transport-neutral; a line-oriented stdio transport is provided for local use until TCP lands.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.
@@ -37,26 +38,31 @@ include/backtester/
   strategies/    Built-in trading strategies
   experiment/    Versioned experiment schema and service entry point
   protocol/      Coordinator <-> worker wire message types
+  worker/        Worker transport interface and job execution API
 src/
   core/          Implementations of the core utilities
   trading/       Implementations of the trading model
   strategies/    Implementations of the built-in strategies
   experiment/    Request parsing, validation, execution, and result JSON
   protocol/      Job/result parsing, validation, and serialization
+  worker/        Worker loop, job execution, and stdio transport
   main.cpp       CLI entry point
+  worker_main.cpp  Worker executable entry point
 tests/
   core/          Unit tests for core utilities
   trading/       Unit and accounting tests for the trading model
   strategies/    Unit tests for each strategy
   experiment/    Schema, service, and parallel-execution tests
   protocol/      Wire message parsing, validation, and round-trip tests
-  integration/   Real-data, protocol-example, pipeline, and end-to-end tests
+  worker/        Worker loop, job execution, and transport tests
+  integration/   Real-data, protocol-example, worker, pipeline, and end-to-end tests
 ```
 
 Public headers are included relative to `include/backtester`, for example
 `#include "trading/backtest_engine.h"`,
-`#include "experiment/experiment.h"`, or
-`#include "protocol/protocol.h"`.
+`#include "experiment/experiment.h"`,
+`#include "protocol/protocol.h"`, or
+`#include "worker/worker.h"`.
 
 ## Build and Test
 
@@ -83,10 +89,25 @@ The JSON Schemas live in [`schema/`](schema) and example requests in
 
 ## Distributed Execution
 
-The coordinator/worker split is not implemented yet, but the wire contract is
-defined and tested. A coordinator expands an experiment into
-`backtest_job` messages; each worker replies with a `backtest_result` carrying
-the same `message_id`. See [`docs/protocol.md`](docs/protocol.md), the message
-schemas in [`schema/backtest_job.schema.json`](schema/backtest_job.schema.json)
-and [`schema/backtest_result.schema.json`](schema/backtest_result.schema.json),
-and the examples in [`examples/protocol/`](examples/protocol).
+The wire contract is defined and tested, and a standalone worker executable now
+consumes it. A coordinator expands an experiment into `backtest_job` messages;
+each worker replies with a `backtest_result` carrying the same `message_id`. See
+[`docs/protocol.md`](docs/protocol.md), the message schemas in
+[`schema/backtest_job.schema.json`](schema/backtest_job.schema.json) and
+[`schema/backtest_result.schema.json`](schema/backtest_result.schema.json), and
+the examples in [`examples/protocol/`](examples/protocol).
+
+```bash
+# One compact JSON job per line, one compact JSON reply per line.
+./build/backtester_worker --worker-id worker-a < jobs.jsonl > results.jsonl
+```
+
+The worker is a thin wrapper around the existing engine: it deserializes a job,
+validates the strategy and parameters, loads the data, calls `run_backtest()`,
+and serializes the result. It loops for another job until its input closes.
+
+TCP is **not** implemented yet. The worker loop depends on a `WorkerTransport`
+interface, and the executable currently uses a line-oriented stdio transport for
+local development. Replacing that transport with a TCP implementation does not
+change job execution. See [`docs/worker.md`](docs/worker.md) for the lifecycle,
+error mapping, transport contract, and current limitations.

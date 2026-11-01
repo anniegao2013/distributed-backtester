@@ -1,9 +1,10 @@
 # Worker protocol
 
-The protocol layer defines the JSON messages that a future experiment
-coordinator and backtest workers will exchange. It is transport-neutral: this
-repository currently defines and tests the messages, but no TCP server, client,
-scheduler, or retry loop exists yet.
+The protocol layer defines the JSON messages that an experiment coordinator and
+backtest workers exchange. It is transport-neutral: this repository defines and
+tests the messages, and [`backtester_worker`](worker.md) implements the worker
+side of the exchange. No TCP server or client exists yet; the worker currently
+uses a line-oriented stdio transport for local development.
 
 - Job schema: [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json)
 - Result schema: [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json)
@@ -266,11 +267,14 @@ server can echo `message_id` in that reply. The type-specific parsers and
 
 ## Transport notes
 
-The protocol does not define framing yet. The future TCP adapter must preserve
-one JSON document per message and must handle partial reads and writes. Likely
-choices are a length-prefixed frame or newline-delimited JSON; whichever is
-chosen should be documented with the adapter and enforced with a maximum
-message size.
+The protocol does not define framing yet. The worker loop consumes a
+`WorkerTransport` that yields one JSON document per `receive()` and accepts one
+per `send()` (see [`worker.md`](worker.md)). The future TCP adapter must preserve
+that boundary and handle partial reads and writes. Likely choices are a
+length-prefixed frame or newline-delimited JSON; whichever is chosen should be
+documented with the adapter and enforced with a maximum message size. The
+current `StdioTransport` uses newline-delimited compact JSON and rejects
+messages above 8 MiB.
 
 The transport will also own concerns that are deliberately not in the message:
 
