@@ -53,6 +53,12 @@ int main() {
                     "examples/protocol/backtest_result_invalid.json"
                 )
             );
+        const WorkerReadyMessage ready = parse_worker_ready_json(
+            read_file("examples/protocol/worker_ready.json")
+        );
+        const WorkerErrorMessage worker_error = parse_worker_error_json(
+            read_file("examples/protocol/worker_error.json")
+        );
         const ProtocolErrorMessage error = parse_protocol_error_json(
             read_file("examples/protocol/protocol_error.json")
         );
@@ -82,8 +88,20 @@ int main() {
             "the sample job asks for trades and the sample result has them"
         );
         expect(
-            error.message_id == job.message_id,
-            "the protocol error sample correlates with the job sample"
+            ready.worker_id == "worker-a" &&
+                ready.message_id == "worker-a:ready:0001",
+            "the worker_ready sample identifies the worker"
+        );
+        expect(
+            worker_error.worker_id == "worker-a" &&
+                worker_error.message_id == job.message_id &&
+                worker_error.error.type == "execution_error",
+            "the worker_error sample carries an execution error"
+        );
+        expect(
+            error.message_id == job.message_id &&
+                error.error.type == "unsupported_version",
+            "the legacy protocol error sample correlates with the job sample"
         );
         expect(
             failed.result.status == "failed" &&
@@ -110,6 +128,10 @@ int main() {
         );
         (void)parse_backtest_result_json(
             backtest_result_to_json(invalid, false)
+        );
+        (void)parse_worker_ready_json(worker_ready_to_json(ready, false));
+        (void)parse_worker_error_json(
+            worker_error_to_json(worker_error, false)
         );
         (void)parse_protocol_error_json(
             protocol_error_to_json(error, false)

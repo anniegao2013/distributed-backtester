@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/backtester-worker-error.schema.json",
+  "title": "Distributed Backtester Worker Error",
+  "description": "Worker-to-coordinator failure report. Use it when a message cannot be processed, or when the worker cannot produce a backtest_result for a readable job. Per-job strategy and data failures still use backtest_result with status invalid or failed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "error"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this schema, for editor support."
+    },
+    "protocol_version": {
+      "const": 1,
+      "description": "Wire protocol version. Only version 1 is supported."
+    },
+    "type": {
+      "const": "worker_error"
+    },
+    "message_id": {
+      "$ref": "#/$defs/messageId",
+      "description": "Echoed when the envelope was readable; omitted otherwise."
+    },
+    "worker_id": {
+      "$ref": "#/$defs/messageId",
+      "description": "Worker identity, for logs and diagnostics."
+    },
+    "error": {
+      "$ref": "#/$defs/errorDetail"
+    }
+  },
+  "$defs": {
+    "messageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "errorDetail": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "message"],
+      "properties": {
+        "type": {
+          "enum": [
+            "json_parse_error",
+            "unsupported_version",
+            "unknown_message_type",
+            "validation_error",
+            "execution_error"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "description": "JSONPath-like location of the invalid field, when known."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

@@ -10,17 +10,18 @@
 
 // The worker half of the coordinator/worker split.
 //
-// A worker owns no scheduling state. It repeatedly receives one JSON message,
-// runs at most one backtest, and replies with exactly one message. The
-// transport is injected, so the same worker loop can run over an in-memory
-// queue in tests, over stdio for local development, or over TCP once that
-// adapter exists.
+// A worker owns no scheduling state. After connecting it announces itself with
+// one worker_ready message, then repeatedly receives one JSON message, runs at
+// most one backtest, and replies with exactly one message. The transport is
+// injected, so the same worker loop can run over an in-memory queue in tests,
+// over stdio for local development, or over TCP once that adapter exists.
 //
 // This layer deliberately contains no socket code. See docs/worker.md.
 
-// One message in, one message out. Implementations own framing: receive()
-// returns exactly one complete JSON document and send() accepts exactly one.
-// Both may throw; run_worker() lets transport failures propagate.
+// Messages in and out. Implementations own framing: receive() returns exactly
+// one complete JSON document and send() accepts exactly one. The worker sends
+// an unsolicited worker_ready message before it starts receiving. Both calls
+// may throw; run_worker() lets transport failures propagate.
 class WorkerTransport {
 public:
     virtual ~WorkerTransport() = default;
@@ -49,14 +50,15 @@ struct WorkerConfig {
 };
 
 // Counters for one run of the loop. A job counted as failed or invalid still
-// produced a backtest_result; a protocol error produced a protocol_error.
+// produced a backtest_result; a worker error produced a worker_error.
 struct WorkerStats {
+    std::size_t ready_messages_sent = 0;
     std::size_t messages_received = 0;
     std::size_t jobs_received = 0;
     std::size_t jobs_completed = 0;
     std::size_t jobs_failed = 0;
     std::size_t jobs_invalid = 0;
-    std::size_t protocol_errors = 0;
+    std::size_t worker_errors = 0;
     std::size_t shutdowns_received = 0;
 };
 
@@ -86,15 +88,16 @@ BacktestResultMessage make_result_message(
     const WorkerJobOutcome& outcome
 );
 
-// Connects, then loops until a shutdown message arrives or the transport is
-// closed. Every received message produces exactly one reply:
+// Connects, announces readiness with one worker_ready message, then loops
+// until a shutdown message arrives or the transport is closed. Every received
+// message produces exactly one reply:
 //
 //   valid job          -> backtest_result (completed, failed, or invalid)
 //   shutdown           -> no reply; the loop stops after the current job
-//   malformed bytes    -> protocol_error json_parse_error
-//   bad envelope       -> protocol_error validation_error
-//   unsupported version-> protocol_error unsupported_version
-//   unexpected type    -> protocol_error unknown_message_type
+//   malformed bytes    -> worker_error json_parse_error
+//   bad envelope       -> worker_error validation_error
+//   unsupported version-> worker_error unsupported_version
+//   unexpected type    -> worker_error unknown_message_type
 WorkerStats run_worker(
     WorkerTransport& transport,
     const WorkerConfig& config = {}

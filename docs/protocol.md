@@ -6,20 +6,36 @@ tests the messages, and [`backtester_worker`](worker.md) implements the worker
 side of the exchange. No TCP server or client exists yet; the worker currently
 uses a line-oriented stdio transport for local development.
 
+- Worker ready schema: [`schema/worker_ready.schema.json`](../schema/worker_ready.schema.json)
 - Job schema: [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json)
 - Result schema: [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json)
 - Shutdown schema: [`schema/shutdown.schema.json`](../schema/shutdown.schema.json)
+- Worker error schema: [`schema/worker_error.schema.json`](../schema/worker_error.schema.json)
 - Examples: [`examples/protocol/`](../examples/protocol)
 - C++ API: [`include/backtester/protocol/protocol.h`](../include/backtester/protocol/protocol.h)
 
 The C++ parser and validator are the source of truth. The JSON Schema files
 describe the same contract for editors and non-C++ producers.
 
+## Message catalog
+
+| Type | Direction | Purpose |
+| --- | --- | --- |
+| `worker_ready` | worker → coordinator | The worker is available and identifies itself. |
+| `backtest_job` | coordinator → worker | Assign one fully-expanded backtest. |
+| `backtest_result` | worker → coordinator | Return the completed, failed, or invalid result of one job. |
+| `shutdown` | coordinator → worker | Ask the worker to terminate after the current job. |
+| `worker_error` | worker → coordinator | Report an execution or protocol failure. |
+
+`protocol_error` is a deprecated input alias of `worker_error`. A parser accepts
+either type name; a serializer always emits `worker_error`.
+
 ## Message flow
 
 ```text
 experiment request
   -> coordinator expands strategies into jobs
+  -> worker connects and sends one worker_ready
   -> one backtest_job per job, each with a unique message_id
   -> worker validates and runs the backtest
   -> one backtest_result per job, echoing message_id
@@ -30,8 +46,10 @@ experiment request
 
 A job is atomic. A worker returns exactly one `backtest_result` for every
 readable `backtest_job` envelope, including jobs it rejects before execution. A
-`protocol_error` is reserved for messages whose envelope cannot be processed
-at all. A `shutdown` is a control message and produces no reply.
+`worker_error` is reserved for messages whose envelope cannot be processed and
+for worker-level failures that cannot be represented as a job result. A
+`shutdown` is a control message and produces no reply. `worker_ready` is an
+announcement and also produces no reply.
 
 ## Envelope
 
@@ -41,8 +59,9 @@ Every message has these top-level fields:
 | --- | --- | --- |
 | `$schema` | No | Optional URI for editor tooling. Ignored by the parser. |
 | `protocol_version` | Yes | Must be `1`. |
-| `type` | Yes | `backtest_job`, `backtest_result`, `protocol_error`, or `shutdown`. |
-| `message_id` | Job/result: yes; error: no | Correlation key. Starts with a letter or digit, then letters, digits, `.`, `_`, `-`, or `:`; at most 128 characters. |
+| `type` | Yes | `worker_ready`, `backtest_job`, `backtest_result`, `shutdown`, or `worker_error` (`protocol_error` is a legacy input alias). |
+| `message_id` | Ready/job/result/shutdown: yes; error: no | Correlation key. Starts with a letter or digit, then letters, digits, `.`, `_`, `-`, or `:`; at most 128 characters. |
+| `worker_id` | Ready: yes; result/error: no | Worker identity. Same character rules as `message_id`. |
 
 `message_id` is chosen by the sender and echoed by the receiver. It is the
 correlation key, not the job identity: the coordinator may retry the same job
@@ -50,6 +69,31 @@ with a new `message_id`, or reuse it so a worker can cache and deduplicate the
 reply. `job_id` is deterministic within an experiment (`ma-1`, `ma-2`, ...) but
 is not globally unique, so use `(experiment_id, job_id)` for reporting and
 `message_id` for wire correlation.
+
+## `worker_ready`
+
+Worker-to-coordinator availability announcement. The worker sends it once,
+immediately after the transport is connected and before it waits for work. It
+tells the coordinator which identity owns the connection. No reply is defined.
+
+```json
+{
+  "$schema": "../schema/worker_ready.schema.json",
+  "protocol_version": 1,
+  "type": "worker_ready",
+  "message_id": "worker-a:ready:0001",
+  "worker_id": "worker-a"
+}
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `message_id` | Yes | Correlation key for logs and diagnostics. |
+| `worker_id` | Yes | Identity of the worker that owns this connection. |
+
+A future TCP adapter can use this message as the application-level handshake.
+It carries no capacity or strategy inventory in version 1; those can be added
+as optional fields without changing the message flow.
 
 ## `backtest_job`
 
@@ -230,40 +274,58 @@ the connection. No reply is defined; the coordinator observes the close.
 A worker also stops when the connection closes, whether the coordinator closes
 it cleanly or the transport reports an error. Jobs queued after a valid
 `shutdown` are not processed. An invalid `shutdown` payload produces a
-`protocol_error` and does not stop the worker.
+`worker_error` and does not stop the worker.
 
-## `protocol_error`
+## `worker_error`
 
-Returned when the envelope itself cannot be processed. The worker should not
-attempt to parse a job payload in this case.
+Worker-to-coordinator failure report. It covers protocol failures, where the
+envelope or payload cannot be processed, and worker-level execution failures
+that prevent a `backtest_result` from being produced.
 
 ```json
 {
-  "$schema": "../schema/backtest_result.schema.json",
+  "$schema": "../schema/worker_error.schema.json",
   "protocol_version": 1,
-  "type": "protocol_error",
+  "type": "worker_error",
   "message_id": "crossover-sweep:crossover-1:0001",
+  "worker_id": "worker-a",
   "error": {
-    "type": "unsupported_version",
-    "path": "$.protocol_version",
-    "message": "Unsupported protocol_version; this build speaks version 1"
+    "type": "execution_error",
+    "path": "$.job.data.path",
+    "message": "Could not read market data file"
   }
 }
 ```
 
-`message_id` is echoed only when it was readable. Error types:
+| Field | Required | Description |
+| --- | --- | --- |
+| `message_id` | No | Echoed only when the envelope was readable. |
+| `worker_id` | No | Worker identity, for logs and diagnostics. |
+| `error.type` | Yes | One of the categories below. |
+| `error.path` | No | JSONPath-like location, when known. |
+| `error.message` | Yes | Human-readable explanation. |
+
+Error types:
 
 | Type | Meaning |
 | --- | --- |
 | `json_parse_error` | The bytes were not a single valid JSON document. |
 | `unsupported_version` | `protocol_version` was missing or not `1`. |
-| `unknown_message_type` | `type` was not one of the four known values. |
-| `validation_error` | The envelope was readable but malformed, for example a missing `message_id`. |
+| `unknown_message_type` | `type` was not one of the five known values. |
+| `validation_error` | The envelope or payload was readable but malformed. |
+| `execution_error` | The worker could not produce a result for a readable job. |
 
-A future server should map this to a best-effort reply and then decide whether
-to keep the connection open. A message whose `protocol_version` is unknown may
-use a different envelope entirely, so closing the connection is also
-reasonable.
+Per-job strategy and data failures still use `backtest_result` with status
+`invalid` or `failed`; that preserves the one-result-per-job guarantee. A
+`worker_error` means no result is available for the message.
+
+A future server should map a `worker_error` to a best-effort reply and then
+decide whether to keep the connection open. A message whose `protocol_version`
+is unknown may use a different envelope entirely, so closing the connection is
+also reasonable.
+
+`protocol_error` is the previous name of this message. It remains valid input,
+and an error parsed under that name is serialized as `worker_error`.
 
 ## Validation boundaries
 
@@ -282,13 +344,13 @@ The worker validates:
 - dataset availability and content.
 
 An unknown strategy type or bad parameter set produces `status: "invalid"` with
-`error.type: "validation_error"`, not a `protocol_error`.
+`error.type: "validation_error"`, not a `worker_error`.
 
 ## Versioning
 
 Every message declares `"protocol_version": 1`. Additive, backward-compatible
 fields may be added within version 1; breaking changes bump the version.
-Receivers must reject unsupported versions with a `protocol_error` of type
+Receivers must reject unsupported versions with a `worker_error` of type
 `unsupported_version` when they can still read the envelope. `parse_protocol_envelope()`
 does not enforce the supported version; it reports the version it saw so the
 server can echo `message_id` in that reply. The type-specific parsers and
@@ -298,7 +360,8 @@ server can echo `message_id` in that reply. The type-specific parsers and
 
 The protocol does not define framing yet. The worker loop consumes a
 `WorkerTransport` that yields one JSON document per `receive()` and accepts one
-per `send()` (see [`worker.md`](worker.md)). The future TCP adapter must preserve
+per `send()` (see [`worker.md`](worker.md)). After `connect()` the worker sends
+one `worker_ready` before it waits for work. The future TCP adapter must preserve
 that boundary and handle partial reads and writes. Likely choices are a
 length-prefixed frame or newline-delimited JSON; whichever is chosen should be
 documented with the adapter and enforced with a maximum message size. The
@@ -307,7 +370,7 @@ messages above 8 MiB.
 
 The transport will also own concerns that are deliberately not in the message:
 
-- connection lifecycle and worker registration;
+- connection lifecycle and coordinator-side registration bookkeeping;
 - timeouts, retry, and duplicate suppression by `message_id`;
 - backpressure and bounded in-flight jobs;
 - authentication and encryption;
@@ -324,14 +387,20 @@ job.message_id = "crossover-sweep:crossover-1:0001";
 job.job = { /* ... */ };
 const std::string request = backtest_job_to_json(job, /*pretty=*/false);
 
-// Worker side.
+// Worker side: announce readiness once, then serve.
+WorkerReadyMessage ready;
+ready.message_id = "worker-a:ready:0001";
+ready.worker_id = "worker-a";
+const std::string announcement =
+    worker_ready_to_json(ready, /*pretty=*/false);
+
 try {
     const ProtocolEnvelope envelope = parse_protocol_envelope(request);
 
     if (envelope.protocol_version != kBacktestProtocolVersion) {
-        // Reply with make_protocol_error("unsupported_version", ...,
-        //                                "$.protocol_version",
-        //                                envelope.message_id).
+        // Reply with make_worker_error("unsupported_version", ...,
+        //                               "$.protocol_version",
+        //                               envelope.message_id, "worker-a").
     } else if (envelope.type == "backtest_job") {
         const BacktestJobMessage parsed =
             parse_backtest_job_json(request);
@@ -341,13 +410,15 @@ try {
         // Finish the current job, then stop the loop and close.
     }
 } catch (const JsonParseError& error) {
-    // Reply with make_protocol_error("json_parse_error", error.what(), ...).
+    // Reply with make_worker_error("json_parse_error", error.what(), ...).
 } catch (const ProtocolValidationError& error) {
-    // Reply with make_protocol_error("validation_error", error.what(),
-    //                                error.path(), ...).
+    // Reply with make_worker_error("validation_error", error.what(),
+    //                              error.path(), ...).
 }
 ```
 
-`parse_protocol_message_json()` parses and dispatches all four message types in
+`parse_protocol_message_json()` parses and dispatches all five message types in
 one call. The type-specific parsers are useful when the transport already knows
 what to expect, or when it wants a precise error for a mismatched `type`.
+`parse_protocol_error_json()` and `make_protocol_error()` remain as deprecated
+aliases for the worker-error API.

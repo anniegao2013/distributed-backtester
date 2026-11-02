@@ -15,8 +15,8 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by configurable concurrency. The demo runs the moving-average crossover, RSI mean-reversion, and Donchian channel breakout strategies side by side, sweeping each strategy's parameters.
 - **JSON experiment schema:** Versioned request documents define the dataset, date range, execution costs, strategy grids, and output options. A matching response schema describes the machine-readable result.
 - **Service-ready entry point:** `run_experiment_json()` accepts a request document and always returns a schema-shaped response, including structured validation errors. The CLI exposes the same path via `--experiment` and stdin.
-- **Worker protocol:** Versioned JSON messages for coordinator-to-worker backtest jobs and worker-to-coordinator results, with strict parsing, validation, and JSON Schemas. Transport (TCP) is not implemented yet.
-- **Standalone worker:** `backtester_worker` receives one job at a time, runs the existing engine, and replies with one result. It keeps serving until it receives a `shutdown` message or its connection closes. The loop is transport-neutral; a line-oriented stdio transport is provided for local use until TCP lands.
+- **Worker protocol:** Versioned JSON messages for availability (`worker_ready`), coordinator-to-worker jobs (`backtest_job`), worker-to-coordinator results (`backtest_result`), shutdown (`shutdown`), and errors (`worker_error`), with strict parsing, validation, and JSON Schemas. Transport (TCP) is not implemented yet.
+- **Standalone worker:** `backtester_worker` announces `worker_ready`, then receives one job at a time, runs the existing engine, and replies with one result. It keeps serving until it receives a `shutdown` message or its connection closes. The loop is transport-neutral; a line-oriented stdio transport is provided for local use until TCP lands.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
 - **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.
@@ -90,16 +90,16 @@ The JSON Schemas live in [`schema/`](schema) and example requests in
 ## Distributed Execution
 
 The wire contract is defined and tested, and a standalone worker executable now
-consumes it. A coordinator expands an experiment into `backtest_job` messages;
-each worker replies with a `backtest_result` carrying the same `message_id`. See
-[`docs/protocol.md`](docs/protocol.md), the message schemas in
-[`schema/backtest_job.schema.json`](schema/backtest_job.schema.json) and
-[`schema/backtest_result.schema.json`](schema/backtest_result.schema.json), and
-the examples in [`examples/protocol/`](examples/protocol).
+consumes it. A worker connects and sends `worker_ready`; the coordinator expands
+an experiment into `backtest_job` messages; each worker replies with a
+`backtest_result` carrying the same `message_id`; and the coordinator sends
+`shutdown` when the run is complete. Protocol and execution failures use
+`worker_error`. See [`docs/protocol.md`](docs/protocol.md), the message schemas
+in [`schema/`](schema), and the examples in [`examples/protocol/`](examples/protocol).
 
 ```bash
-# One compact JSON job per line, one compact JSON reply per line.
-./build/backtester_worker --worker-id worker-a < jobs.jsonl > results.jsonl
+# One compact JSON message per line. The first output line is worker_ready.
+./build/backtester_worker --worker-id worker-a < messages.jsonl > messages.out
 ```
 
 The worker is a thin wrapper around the existing engine: it deserializes a job,

@@ -356,6 +356,27 @@ void validate_worker_id(
     validate_opaque_id(value, path, "worker_id");
 }
 
+void validate_worker_ready_message(const WorkerReadyMessage& message) {
+    const std::string root = kRootPath;
+
+    if (message.protocol_version != kBacktestProtocolVersion) {
+        fail(
+            child_path(root, "protocol_version"),
+            "Unsupported protocol_version; this build speaks version " +
+                std::to_string(kBacktestProtocolVersion)
+        );
+    }
+
+    validate_message_id(
+        message.message_id,
+        child_path(root, "message_id")
+    );
+    validate_worker_id(
+        message.worker_id,
+        child_path(root, "worker_id")
+    );
+}
+
 void validate_job_message(const BacktestJobMessage& message) {
     const std::string root = kRootPath;
 
@@ -517,7 +538,7 @@ void validate_result_message(const BacktestResultMessage& message) {
     }
 }
 
-void validate_error_message(const ProtocolErrorMessage& message) {
+void validate_worker_error_message(const WorkerErrorMessage& message) {
     const std::string root = kRootPath;
 
     if (message.protocol_version != kBacktestProtocolVersion) {
@@ -535,6 +556,13 @@ void validate_error_message(const ProtocolErrorMessage& message) {
         );
     }
 
+    if (!message.worker_id.empty()) {
+        validate_worker_id(
+            message.worker_id,
+            child_path(root, "worker_id")
+        );
+    }
+
     const std::string error_path = child_path(root, "error");
     const std::string type_path = child_path(error_path, "type");
     const std::string message_path = child_path(error_path, "message");
@@ -542,11 +570,13 @@ void validate_error_message(const ProtocolErrorMessage& message) {
     if (message.error.type != "json_parse_error" &&
         message.error.type != "unsupported_version" &&
         message.error.type != "unknown_message_type" &&
-        message.error.type != "validation_error") {
+        message.error.type != "validation_error" &&
+        message.error.type != "execution_error") {
         fail(
             type_path,
             "Expected 'json_parse_error', 'unsupported_version', "
-            "'unknown_message_type', or 'validation_error'"
+            "'unknown_message_type', 'validation_error', or "
+            "'execution_error'"
         );
     }
 

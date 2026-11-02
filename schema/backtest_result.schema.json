@@ -2,10 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.com/schemas/backtester-backtest-result.schema.json",
   "title": "Distributed Backtester Backtest Result",
-  "description": "Worker-to-coordinator reply. A valid job envelope always produces a backtest_result, even when the job itself is invalid. A malformed or unroutable envelope produces a protocol_error.",
+  "description": "Worker-to-coordinator reply. A valid job envelope always produces a backtest_result, even when the job itself is invalid. A malformed or unroutable envelope, or a worker-level failure that cannot be represented as a result, produces a worker_error. The legacy protocol_error type remains accepted on input.",
   "oneOf": [
     {
       "$ref": "#/$defs/resultMessage"
+    },
+    {
+      "$ref": "#/$defs/workerError"
     },
     {
       "$ref": "#/$defs/protocolError"
@@ -284,7 +287,8 @@
             "json_parse_error",
             "unsupported_version",
             "unknown_message_type",
-            "validation_error"
+            "validation_error",
+            "execution_error"
           ]
         },
         "path": {
@@ -313,6 +317,36 @@
         "message_id": {
           "$ref": "#/$defs/messageId",
           "description": "Echoed when the envelope was readable; omitted otherwise."
+        },
+        "error": {
+          "$ref": "#/$defs/protocolErrorDetail"
+        }
+      }
+    },
+    "workerError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol_version", "type", "error"],
+      "properties": {
+        "$schema": {
+          "type": "string"
+        },
+        "protocol_version": {
+          "const": 1
+        },
+        "type": {
+          "const": "worker_error"
+        },
+        "message_id": {
+          "$ref": "#/$defs/messageId",
+          "description": "Echoed when the envelope was readable; omitted otherwise."
+        },
+        "worker_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$",
+          "description": "Optional worker identity, for logs and diagnostics."
         },
         "error": {
           "$ref": "#/$defs/protocolErrorDetail"

@@ -1,8 +1,9 @@
 # Worker
 
-`backtester_worker` is a standalone process that turns one `backtest_job`
-message into one `backtest_result`. It is a thin wrapper around the existing
-backtesting engine: it contains no strategy logic and no new execution model.
+`backtester_worker` is a standalone process that announces itself with
+`worker_ready`, then turns one `backtest_job` message into one
+`backtest_result`. It is a thin wrapper around the existing backtesting
+engine: it contains no strategy logic and no new execution model.
 
 The worker loop is transport-neutral. The coordinator/worker wire contract is
 defined in [`protocol.md`](protocol.md); this document covers the process that
@@ -11,50 +12,57 @@ a line-oriented stdio transport so the full path can be exercised locally.
 
 ## Lifecycle
 
-Each iteration of the loop performs the steps below:
+The worker connects, announces readiness, then performs the steps below for
+each message:
 
 1. **Connect.** `WorkerTransport::connect()` establishes the connection. For
    stdio this only checks that both streams are usable.
-2. **Wait for a message.** `receive()` blocks until one complete JSON message
+2. **Announce.** The worker sends one `worker_ready` message carrying its
+   `worker_id`. The coordinator now knows which worker owns the connection.
+3. **Wait for a message.** `receive()` blocks until one complete JSON message
    arrives, or returns `std::nullopt` when the coordinator closes the stream.
-3. **Deserialize.** `parse_protocol_envelope()` reads the envelope. A
+4. **Deserialize.** `parse_protocol_envelope()` reads the envelope. A
    `backtest_job` is parsed with `parse_backtest_job_json()`; a `shutdown` is
    parsed with `parse_shutdown_json()`.
-4. **Validate.** For a job, the worker checks that `strategy_type` is registered
+5. **Validate.** For a job, the worker checks that `strategy_type` is registered
    and that the parameter set is complete and in range. This is worker-side
    validation: the protocol layer accepts any finite parameter map.
-5. **Run.** `load_market_data()` reads the dataset, `create_strategy()` builds
+6. **Run.** `load_market_data()` reads the dataset, `create_strategy()` builds
    the strategy, and `run_backtest()` executes the existing engine.
-6. **Serialize.** `make_result_message()` echoes the job identity and
+7. **Serialize.** `make_result_message()` echoes the job identity and
    `backtest_result_to_json()` validates and writes the reply.
-7. **Send.** `send()` hands exactly one message back to the coordinator.
-8. **Repeat** until a valid `shutdown` arrives or the connection closes.
+8. **Send.** `send()` hands exactly one message back to the coordinator.
+9. **Repeat** until a valid `shutdown` arrives or the connection closes.
 
 A `shutdown` takes effect between jobs. The worker finishes the job it is
 already running, sends its result, and then exits without replying to the
 shutdown. If jobs are already queued, they are not processed. An invalid
-shutdown payload produces a `protocol_error` and does not stop the loop.
+shutdown payload produces a `worker_error` and does not stop the loop.
 
 ## Error mapping
 
 Every received job produces exactly one reply. A `shutdown` produces no reply.
+`worker_ready` is sent unsolicited before the first receive.
 
 | Input | Reply |
 | --- | --- |
+| Startup | `worker_ready`, once |
 | Valid job that runs | `backtest_result`, status `completed` |
 | Unknown strategy type, missing or out-of-range parameter | `backtest_result`, status `invalid`, error type `validation_error` |
 | Missing/unreadable data, no bars in range, engine failure | `backtest_result`, status `failed`, error type `runtime_error` |
 | Valid `shutdown` | No reply; the loop stops |
-| Not a single valid JSON document | `protocol_error`, type `json_parse_error` |
-| Readable envelope but invalid/missing envelope fields | `protocol_error`, type `validation_error` |
-| `protocol_version` not supported | `protocol_error`, type `unsupported_version`, `message_id` echoed when readable |
-| Envelope type other than `backtest_job` or `shutdown` | `protocol_error`, type `unknown_message_type` |
-| Envelope valid, job or shutdown payload malformed | `protocol_error`, type `validation_error`, `message_id` echoed |
+| Not a single valid JSON document | `worker_error`, type `json_parse_error` |
+| Readable envelope but invalid/missing envelope fields | `worker_error`, type `validation_error` |
+| `protocol_version` not supported | `worker_error`, type `unsupported_version`, `message_id` echoed when readable |
+| Envelope type other than `backtest_job` or `shutdown` | `worker_error`, type `unknown_message_type` |
+| Envelope valid, job or shutdown payload malformed | `worker_error`, type `validation_error`, `message_id` echoed |
+| Worker could not produce a result for a readable job | `worker_error`, type `execution_error` |
 
 The distinction matters to the coordinator: an `invalid` result means the job
 itself was bad, so retrying it elsewhere will fail the same way. A `failed`
-result may be retryable on another worker. A `protocol_error` means the envelope
-could not be routed at all.
+result may be retryable on another worker. A `worker_error` means no
+`backtest_result` is available, either because the envelope could not be routed
+or because the worker failed outside a job result.
 
 `duration_seconds` measures worker-side validation, data loading, and
 execution. It excludes queueing and transport time.
@@ -72,7 +80,8 @@ public:
 ```
 
 `receive()` returns exactly one complete JSON document and `send()` accepts
-exactly one. Framing, connection lifecycle, retries, and duplicate suppression
+exactly one. The worker calls `send()` once with `worker_ready` before the first
+`receive()`. Framing, connection lifecycle, retries, and duplicate suppression
 belong to the implementation, not the loop. `run_worker()` lets transport
 exceptions propagate, so a broken connection terminates the process with a
 non-zero exit code instead of silently dropping work.
@@ -103,6 +112,17 @@ untrusted boundaries.
 ./build/backtester_worker --help
 ```
 
+The first output line is always a ready announcement:
+
+```json
+{
+  "protocol_version": 1,
+  "type": "worker_ready",
+  "message_id": "worker-a:ready:0001",
+  "worker_id": "worker-a"
+}
+```
+
 A shutdown line looks like this (compact in the stream, pretty here):
 
 ```json
@@ -116,7 +136,7 @@ A shutdown line looks like this (compact in the stream, pretty here):
 
 The process exits `0` at end of input or after a shutdown, and `1` on a
 configuration or transport error. A malformed message is not fatal: it produces
-a `protocol_error` and the loop continues.
+a `worker_error` and the loop continues.
 
 Job paths are resolved in the worker's environment. Version 1 assumes shared
 storage, such as a mounted volume, so the coordinator and worker see the same
@@ -134,6 +154,7 @@ config.worker_id = "worker-a";
 config.log = [](const std::string& line) { /* stderr */ };
 
 const WorkerStats stats = run_worker(transport, config);
+// stats.ready_messages_sent == 1, plus job and error counters.
 ```
 
 `execute_backtest_job(const BacktestJob&)` is also public. It never throws for a
@@ -149,7 +170,7 @@ touches the wire.
 ## What is not here yet
 
 - TCP listener/client, framing, reconnection, and timeouts.
-- Worker registration and heartbeats.
+- Coordinator-side registration bookkeeping and heartbeats.
 - Duplicate suppression by `message_id`.
 - Multiple jobs in flight per worker or a bounded work queue.
 - Coordinator-side aggregation of results back into an experiment response.

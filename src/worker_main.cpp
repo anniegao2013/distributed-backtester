@@ -12,19 +12,20 @@ namespace {
 constexpr const char* kUsage =
     "Usage: backtester_worker [options]\n"
     "\n"
-    "Runs a backtest worker. Reads one compact JSON protocol message per\n"
-    "line from stdin, runs up to one backtest per message, and writes one\n"
-    "JSON reply per line to stdout. Diagnostics go to stderr.\n"
+    "Runs a backtest worker. Announces worker_ready, then reads one compact\n"
+    "JSON protocol message per line from stdin, runs up to one backtest per\n"
+    "message, and writes one JSON reply per line to stdout. Diagnostics go to\n"
+    "stderr.\n"
     "\n"
     "This is the local development transport. Coordinator/worker TCP is not\n"
     "implemented yet.\n"
     "\n"
     "Options:\n"
-    "  -w, --worker-id ID  Identity echoed in every result.\n"
+    "  -w, --worker-id ID  Identity used in worker_ready, results, and errors.\n"
     "                      Default: worker-local.\n"
     "  -h, --help          Show this help.\n"
     "\n"
-    "The process exits cleanly at end of input.\n";
+    "The process exits cleanly at end of input or after a shutdown.\n";
 
 bool is_ascii_alphanumeric(char c) {
     return (c >= 'a' && c <= 'z') ||

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/backtester-worker-ready.schema.json",
+  "title": "Distributed Backtester Worker Ready",
+  "description": "Worker-to-coordinator availability announcement. The worker sends this once after the transport is connected and before it waits for work. No reply is defined.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "message_id", "worker_id"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this schema, for editor support."
+    },
+    "protocol_version": {
+      "const": 1,
+      "description": "Wire protocol version. Only version 1 is supported."
+    },
+    "type": {
+      "const": "worker_ready"
+    },
+    "message_id": {
+      "$ref": "#/$defs/messageId",
+      "description": "Correlation key for logs and diagnostics."
+    },
+    "worker_id": {
+      "$ref": "#/$defs/messageId",
+      "description": "Identity of the worker that owns this connection."
+    }
+  },
+  "$defs": {
+    "messageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    }
+  }
+}

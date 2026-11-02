@@ -294,61 +294,8 @@ BacktestResultMessage parse_result_message_document(
     return message;
 }
 
-ProtocolErrorMessage parse_error_message_document(const JsonValue& root) {
-    expect_object(root, kRootPath);
-    allow_schema_reference(root);
-
-    ProtocolErrorMessage message;
-    message.protocol_version = require_protocol_version(root);
-    require_message_type(root, "protocol_error");
-    reject_unknown_members(
-        root,
-        {
-            "$schema",
-            "protocol_version",
-            "type",
-            "message_id",
-            "error"
-        },
-        kRootPath
-    );
-
-    if (root.contains("message_id")) {
-        message.message_id = require_string(
-            root.at("message_id"),
-            std::string(kRootPath) + ".message_id"
-        );
-
-        if (message.message_id.empty()) {
-            fail(
-                std::string(kRootPath) + ".message_id",
-                "message_id must not be empty when present"
-            );
-        }
-    }
-
-    const std::string error_path =
-        std::string(kRootPath) + ".error";
-    const BacktestResultError error = parse_result_error(
-        require_member(root, "error", kRootPath),
-        error_path
-    );
-
-    message.error.type = error.type;
-    message.error.path = error.path;
-    message.error.message = error.message;
-
-    validate_error_message(message);
-
-    return message;
-}
-
 }  // namespace protocol_detail
 
 BacktestResultMessage parse_backtest_result_json(const std::string& text) {
     return protocol_detail::parse_result_message_document(parse_json(text));
-}
-
-ProtocolErrorMessage parse_protocol_error_json(const std::string& text) {
-    return protocol_detail::parse_error_message_document(parse_json(text));
 }

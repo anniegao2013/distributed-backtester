@@ -199,6 +199,29 @@ std::string shutdown_document() {
 })";
 }
 
+std::string worker_ready_document() {
+    return R"({
+  "protocol_version": 1,
+  "type": "worker_ready",
+  "message_id": "worker-a:ready:0001",
+  "worker_id": "worker-a"
+})";
+}
+
+std::string worker_error_document() {
+    return R"({
+  "protocol_version": 1,
+  "type": "worker_error",
+  "message_id": "run-1:job-1",
+  "worker_id": "worker-a",
+  "error": {
+    "type": "execution_error",
+    "path": "$.job.data.path",
+    "message": "Could not read market data file"
+  }
+})";
+}
+
 void expect_validation_with(
     const std::function<void(const std::string&)>& parse,
     const std::string& text,
@@ -827,9 +850,9 @@ void test_protocol_error_round_trip() {
         parse_protocol_error_json(serialized);
 
     expect(
-        serialized.find("\"type\":\"protocol_error\"") !=
+        serialized.find("\"type\":\"worker_error\"") !=
             std::string::npos,
-        "serialized type"
+        "the legacy alias must serialize as the canonical worker_error"
     );
     expect(
         reparsed.error.message == message.error.message,
@@ -987,6 +1010,195 @@ void test_shutdown_round_trip() {
     expect(serializer_threw, "shutdown serializer must reject a bad id");
 }
 
+void test_worker_ready_round_trip() {
+    const WorkerReadyMessage message =
+        parse_worker_ready_json(worker_ready_document());
+
+    expect(message.protocol_version == 1, "worker_ready version");
+    expect(
+        message.message_id == "worker-a:ready:0001",
+        "worker_ready message id"
+    );
+    expect(message.worker_id == "worker-a", "worker_ready worker id");
+
+    const std::string serialized = worker_ready_to_json(message, false);
+    const WorkerReadyMessage reparsed =
+        parse_worker_ready_json(serialized);
+
+    expect(
+        serialized.find("\"type\":\"worker_ready\"") !=
+            std::string::npos,
+        "serialized worker_ready type"
+    );
+    expect(
+        reparsed.message_id == message.message_id &&
+            reparsed.worker_id == message.worker_id,
+        "worker_ready round-trip"
+    );
+
+    const ProtocolMessage dispatched =
+        parse_protocol_message_json(worker_ready_document());
+    expect(
+        std::holds_alternative<WorkerReadyMessage>(dispatched),
+        "dispatch should select worker_ready"
+    );
+
+    expect_validation_with(
+        [](const std::string& document) {
+            (void)parse_worker_ready_json(document);
+        },
+        replace_once(
+            worker_ready_document(),
+            R"("message_id": "worker-a:ready:0001",)",
+            ""
+        ),
+        "$",
+        "Missing required field 'message_id'"
+    );
+
+    expect_validation_with(
+        [](const std::string& document) {
+            (void)parse_worker_ready_json(document);
+        },
+        replace_once(
+            worker_ready_document(),
+            R"("worker_id": "worker-a")",
+            R"("worker_id": "")"
+        ),
+        "$.worker_id",
+        "must not be empty"
+    );
+
+    WorkerReadyMessage invalid;
+    invalid.message_id = "worker-a:ready:0001";
+    invalid.worker_id = "not a worker";
+    bool serializer_threw = false;
+    try {
+        (void)worker_ready_to_json(invalid, false);
+    } catch (const ProtocolValidationError& error) {
+        serializer_threw = true;
+        expect(
+            error.path() == "$.worker_id",
+            "worker_ready serializer validates worker id"
+        );
+    }
+    expect(serializer_threw, "worker_ready serializer must reject a bad id");
+}
+
+void test_worker_error_round_trip() {
+    const WorkerErrorMessage message =
+        parse_worker_error_json(worker_error_document());
+
+    expect(message.message_id == "run-1:job-1", "worker error message id");
+    expect(message.worker_id == "worker-a", "worker error worker id");
+    expect(
+        message.error.type == "execution_error",
+        "worker error type"
+    );
+    expect(
+        message.error.path == "$.job.data.path",
+        "worker error path"
+    );
+
+    const std::string serialized = worker_error_to_json(message, false);
+    const WorkerErrorMessage reparsed =
+        parse_worker_error_json(serialized);
+
+    expect(
+        serialized.find("\"type\":\"worker_error\"") !=
+            std::string::npos,
+        "serialized worker_error type"
+    );
+    expect(
+        reparsed.message_id == message.message_id &&
+            reparsed.worker_id == message.worker_id &&
+            reparsed.error.message == message.error.message,
+        "worker_error round-trip"
+    );
+
+    const ProtocolMessage dispatched =
+        parse_protocol_message_json(worker_error_document());
+    expect(
+        std::holds_alternative<WorkerErrorMessage>(dispatched),
+        "dispatch should select worker_error"
+    );
+
+    // protocol_error remains readable and is rewritten in canonical form.
+    const WorkerErrorMessage legacy =
+        parse_worker_error_json(error_document());
+    expect(
+        legacy.error.type == "unsupported_version",
+        "legacy protocol_error alias parses"
+    );
+    expect(
+        worker_error_to_json(legacy, false).find(
+            "\"type\":\"worker_error\""
+        ) != std::string::npos,
+        "legacy protocol_error serializes as worker_error"
+    );
+
+    // Correlation and worker identity are optional.
+    const WorkerErrorMessage minimal = parse_worker_error_json(
+        replace_once(
+            replace_once(
+                worker_error_document(),
+                R"("message_id": "run-1:job-1",)",
+                ""
+            ),
+            R"("worker_id": "worker-a",)",
+            ""
+        )
+    );
+    expect(
+        minimal.message_id.empty() && minimal.worker_id.empty(),
+        "omitted correlation fields stay empty"
+    );
+
+    expect_validation(
+        replace_once(
+            worker_error_document(),
+            R"("type": "execution_error")",
+            R"("type": "boom")"
+        ),
+        "$.error.type",
+        "Expected 'json_parse_error'"
+    );
+
+    expect_validation(
+        replace_once(
+            worker_error_document(),
+            R"("message": "Could not read market data file")",
+            R"("message": "")"
+        ),
+        "$.error.message",
+        "must not be empty"
+    );
+
+    expect_validation(
+        replace_once(
+            worker_error_document(),
+            R"("worker_id": "worker-a")",
+            R"("worker_id": "not a worker")"
+        ),
+        "$.worker_id",
+        "may contain only"
+    );
+
+    expect_validation(
+        replace_once(
+            worker_error_document(),
+            R"("error": {
+    "type": "execution_error",
+    "path": "$.job.data.path",
+    "message": "Could not read market data file"
+  })",
+            R"("error": {})"
+        ),
+        "$.error",
+        "Missing required field 'type'"
+    );
+}
+
 void test_envelope() {
     const ProtocolEnvelope envelope =
         parse_protocol_envelope(job_document());
@@ -1096,6 +1308,14 @@ int main() {
         test_protocol_error_rejects_bad_type
     );
     run_test("shutdown parses and round-trips", test_shutdown_round_trip);
+    run_test(
+        "worker_ready parses and round-trips",
+        test_worker_ready_round_trip
+    );
+    run_test(
+        "worker_error parses and round-trips",
+        test_worker_error_round_trip
+    );
     run_test("envelope parses", test_envelope);
     run_test("unknown message type rejected", test_unknown_message_type);
     run_test(

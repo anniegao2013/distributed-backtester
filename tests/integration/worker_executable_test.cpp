@@ -91,8 +91,8 @@ BacktestJobMessage make_job(
 }  // namespace
 
 // Runs the worker executable end-to-end through its stdio transport. The
-// executable must read one compact JSON document per line and write exactly
-// one reply per input message.
+// executable must announce worker_ready, then read one compact JSON document
+// per line and write exactly one reply per input message.
 int main() {
     try {
         const std::string executable = EXECUTABLE_PATH;
@@ -132,15 +132,25 @@ int main() {
         const std::vector<std::string> lines =
             split_lines(read_file(output_path));
 
-        if (lines.size() != 2) {
-            std::cerr << "Expected two replies, got " << lines.size() << '\n';
+        if (lines.size() != 3) {
+            std::cerr << "Expected worker_ready and two replies, got "
+                      << lines.size() << '\n';
+            return 1;
+        }
+
+        const WorkerReadyMessage ready =
+            parse_worker_ready_json(lines[0]);
+
+        if (ready.worker_id != "worker-e2e" ||
+            ready.message_id != "worker-e2e:ready:0001") {
+            std::cerr << "Worker did not announce readiness\n";
             return 1;
         }
 
         const BacktestResultMessage first_reply =
-            parse_backtest_result_json(lines[0]);
-        const BacktestResultMessage second_reply =
             parse_backtest_result_json(lines[1]);
+        const BacktestResultMessage second_reply =
+            parse_backtest_result_json(lines[2]);
 
         if (first_reply.message_id != first.message_id ||
             second_reply.message_id != second.message_id) {
@@ -181,7 +191,7 @@ int main() {
 
         const int shutdown_exit = run_command(
             "'" + executable +
-            "' < '" + input_path +
+            "' --worker-id worker-e2e < '" + input_path +
             "' > '" + output_path +
             "' 2> '" + error_path + "'"
         );
@@ -195,14 +205,17 @@ int main() {
         const std::vector<std::string> shutdown_lines =
             split_lines(read_file(output_path));
 
-        if (shutdown_lines.size() != 1) {
-            std::cerr << "Shutdown must produce no reply; expected one "
-                         "result, got " << shutdown_lines.size() << '\n';
+        if (shutdown_lines.size() != 2) {
+            std::cerr << "Shutdown must produce no reply; expected "
+                         "worker_ready and one result, got "
+                      << shutdown_lines.size() << '\n';
             return 1;
         }
 
+        (void)parse_worker_ready_json(shutdown_lines[0]);
+
         const BacktestResultMessage shutdown_reply =
-            parse_backtest_result_json(shutdown_lines.front());
+            parse_backtest_result_json(shutdown_lines[1]);
 
         if (shutdown_reply.message_id != first.message_id ||
             shutdown_reply.result.status != "completed") {
@@ -216,13 +229,13 @@ int main() {
             return 1;
         }
 
-        // A malformed line must produce one protocol_error, and the process
+        // A malformed line must produce one worker_error, and the process
         // must still exit cleanly at end of input.
         write_file(input_path, "{not json\n");
 
         const int malformed_exit = run_command(
             "'" + executable +
-            "' < '" + input_path +
+            "' --worker-id worker-e2e < '" + input_path +
             "' > '" + output_path +
             "' 2> '" + error_path + "'"
         );
@@ -236,16 +249,19 @@ int main() {
         const std::vector<std::string> malformed_lines =
             split_lines(read_file(output_path));
 
-        if (malformed_lines.size() != 1) {
-            std::cerr << "Expected one protocol error reply\n";
+        if (malformed_lines.size() != 2) {
+            std::cerr << "Expected worker_ready and one error reply\n";
             return 1;
         }
 
-        const ProtocolErrorMessage error =
-            parse_protocol_error_json(malformed_lines.front());
+        (void)parse_worker_ready_json(malformed_lines[0]);
 
-        if (error.error.type != "json_parse_error") {
-            std::cerr << "Expected json_parse_error\n";
+        const WorkerErrorMessage error =
+            parse_worker_error_json(malformed_lines[1]);
+
+        if (error.error.type != "json_parse_error" ||
+            error.worker_id != "worker-e2e") {
+            std::cerr << "Expected a worker-scoped json_parse_error\n";
             return 1;
         }
 

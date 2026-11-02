@@ -149,8 +149,8 @@ JsonValue result_to_json(const BacktestResult& result) {
     return JsonValue(std::move(object));
 }
 
-JsonValue protocol_error_detail_to_json(
-    const ProtocolErrorDetail& error
+JsonValue worker_error_detail_to_json(
+    const WorkerErrorDetail& error
 ) {
     JsonObject object;
     object.emplace("type", error.type);
@@ -165,6 +165,21 @@ JsonValue protocol_error_detail_to_json(
 }
 
 }  // namespace
+
+std::string worker_ready_to_json(
+    const WorkerReadyMessage& message,
+    bool pretty
+) {
+    protocol_detail::validate_worker_ready_message(message);
+
+    JsonObject root;
+    root.emplace("protocol_version", message.protocol_version);
+    root.emplace("type", "worker_ready");
+    root.emplace("message_id", message.message_id);
+    root.emplace("worker_id", message.worker_id);
+
+    return serialize_json(JsonValue(std::move(root)), pretty);
+}
 
 std::string backtest_job_to_json(
     const BacktestJobMessage& message,
@@ -201,26 +216,37 @@ std::string backtest_result_to_json(
     return serialize_json(JsonValue(std::move(root)), pretty);
 }
 
-std::string protocol_error_to_json(
-    const ProtocolErrorMessage& message,
+std::string worker_error_to_json(
+    const WorkerErrorMessage& message,
     bool pretty
 ) {
-    protocol_detail::validate_error_message(message);
+    protocol_detail::validate_worker_error_message(message);
 
     JsonObject root;
     root.emplace("protocol_version", message.protocol_version);
-    root.emplace("type", "protocol_error");
+    root.emplace("type", "worker_error");
 
     if (!message.message_id.empty()) {
         root.emplace("message_id", message.message_id);
     }
 
+    if (!message.worker_id.empty()) {
+        root.emplace("worker_id", message.worker_id);
+    }
+
     root.emplace(
         "error",
-        protocol_error_detail_to_json(message.error)
+        worker_error_detail_to_json(message.error)
     );
 
     return serialize_json(JsonValue(std::move(root)), pretty);
+}
+
+std::string protocol_error_to_json(
+    const ProtocolErrorMessage& message,
+    bool pretty
+) {
+    return worker_error_to_json(message, pretty);
 }
 
 std::string shutdown_to_json(
@@ -245,6 +271,10 @@ std::string protocol_message_to_json(
     const ProtocolMessage& message,
     bool pretty
 ) {
+    if (const auto* ready = std::get_if<WorkerReadyMessage>(&message)) {
+        return worker_ready_to_json(*ready, pretty);
+    }
+
     if (const auto* job = std::get_if<BacktestJobMessage>(&message)) {
         return backtest_job_to_json(*job, pretty);
     }
@@ -255,24 +285,42 @@ std::string protocol_message_to_json(
     }
 
     if (const auto* error =
-            std::get_if<ProtocolErrorMessage>(&message)) {
-        return protocol_error_to_json(*error, pretty);
+            std::get_if<WorkerErrorMessage>(&message)) {
+        return worker_error_to_json(*error, pretty);
     }
 
     return shutdown_to_json(std::get<ShutdownMessage>(message), pretty);
+}
+
+WorkerErrorMessage make_worker_error(
+    std::string type,
+    std::string message,
+    std::string path,
+    std::string message_id,
+    std::string worker_id
+) {
+    WorkerErrorMessage error_message;
+    error_message.message_id = std::move(message_id);
+    error_message.worker_id = std::move(worker_id);
+    error_message.error.type = std::move(type);
+    error_message.error.path = std::move(path);
+    error_message.error.message = std::move(message);
+
+    return error_message;
 }
 
 ProtocolErrorMessage make_protocol_error(
     std::string type,
     std::string message,
     std::string path,
-    std::string message_id
+    std::string message_id,
+    std::string worker_id
 ) {
-    ProtocolErrorMessage error_message;
-    error_message.message_id = std::move(message_id);
-    error_message.error.type = std::move(type);
-    error_message.error.path = std::move(path);
-    error_message.error.message = std::move(message);
-
-    return error_message;
+    return make_worker_error(
+        std::move(type),
+        std::move(message),
+        std::move(path),
+        std::move(message_id),
+        std::move(worker_id)
+    );
 }

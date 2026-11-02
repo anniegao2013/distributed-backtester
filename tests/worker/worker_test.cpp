@@ -116,6 +116,25 @@ private:
     std::deque<std::string> pending_;
 };
 
+void expect_ready(
+    const MemoryTransport& transport,
+    const std::string& worker_id = "worker-local"
+) {
+    expect(!transport.sent.empty(), "worker must send worker_ready first");
+
+    const WorkerReadyMessage ready =
+        parse_worker_ready_json(transport.sent.front());
+
+    expect(
+        ready.worker_id == worker_id,
+        "worker_ready must identify the worker"
+    );
+    expect(
+        ready.message_id == worker_id + ":ready:0001",
+        "worker_ready must use a deterministic message id"
+    );
+}
+
 void test_runs_backtest() {
     const WorkerJobOutcome outcome =
         execute_backtest_job(make_job().job);
@@ -273,14 +292,19 @@ void test_loop_completes_job() {
     const WorkerStats stats = run_worker(transport, config);
 
     expect(transport.connected, "run_worker must connect first");
+    expect(
+        stats.ready_messages_sent == 1,
+        "run_worker must announce readiness"
+    );
     expect(stats.messages_received == 1, "expected one message");
     expect(stats.jobs_received == 1, "expected one job");
     expect(stats.jobs_completed == 1, "expected one completed job");
-    expect(stats.protocol_errors == 0, "expected no protocol errors");
-    expect(transport.sent.size() == 1, "expected one reply");
+    expect(stats.worker_errors == 0, "expected no worker errors");
+    expect(transport.sent.size() == 2, "expected ready and one reply");
+    expect_ready(transport, "worker-a");
 
     const BacktestResultMessage reply =
-        parse_backtest_result_json(transport.sent.front());
+        parse_backtest_result_json(transport.sent[1]);
 
     expect(
         reply.message_id == "worker-test:ma-1:0001",
@@ -303,12 +327,13 @@ void test_loop_processes_jobs_sequentially() {
 
     expect(stats.messages_received == 2, "expected two messages");
     expect(stats.jobs_completed == 2, "expected two completed jobs");
-    expect(transport.sent.size() == 2, "expected two replies");
+    expect(transport.sent.size() == 3, "expected ready and two replies");
+    expect_ready(transport);
 
     const BacktestResultMessage first =
-        parse_backtest_result_json(transport.sent[0]);
-    const BacktestResultMessage second =
         parse_backtest_result_json(transport.sent[1]);
+    const BacktestResultMessage second =
+        parse_backtest_result_json(transport.sent[2]);
 
     expect(
         first.message_id == "worker-test:ma-1:0001" &&
@@ -322,15 +347,21 @@ void test_loop_reports_malformed_json() {
 
     const WorkerStats stats = run_worker(transport);
 
-    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(stats.worker_errors == 1, "expected one worker error");
     expect(stats.jobs_received == 0, "no job should be accepted");
+    expect(transport.sent.size() == 2, "expected ready and one error");
+    expect_ready(transport);
 
-    const ProtocolErrorMessage error =
-        parse_protocol_error_json(transport.sent.front());
+    const WorkerErrorMessage error =
+        parse_worker_error_json(transport.sent[1]);
 
     expect(
         error.error.type == "json_parse_error",
         "expected json_parse_error"
+    );
+    expect(
+        error.worker_id == "worker-local",
+        "worker errors must identify the worker"
     );
 }
 
@@ -339,10 +370,12 @@ void test_loop_reports_invalid_envelope() {
 
     const WorkerStats stats = run_worker(transport);
 
-    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(stats.worker_errors == 1, "expected one worker error");
+    expect(transport.sent.size() == 2, "expected ready and one error");
+    expect_ready(transport);
 
-    const ProtocolErrorMessage error =
-        parse_protocol_error_json(transport.sent.front());
+    const WorkerErrorMessage error =
+        parse_worker_error_json(transport.sent[1]);
 
     expect(
         error.error.type == "validation_error",
@@ -364,10 +397,12 @@ void test_loop_reports_unsupported_version() {
     MemoryTransport transport({job});
     const WorkerStats stats = run_worker(transport);
 
-    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(stats.worker_errors == 1, "expected one worker error");
+    expect(transport.sent.size() == 2, "expected ready and one error");
+    expect_ready(transport);
 
-    const ProtocolErrorMessage error =
-        parse_protocol_error_json(transport.sent.front());
+    const WorkerErrorMessage error =
+        parse_worker_error_json(transport.sent[1]);
 
     expect(
         error.error.type == "unsupported_version",
@@ -386,10 +421,12 @@ void test_loop_reports_unexpected_message_type() {
 
     const WorkerStats stats = run_worker(transport);
 
-    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(stats.worker_errors == 1, "expected one worker error");
+    expect(transport.sent.size() == 2, "expected ready and one error");
+    expect_ready(transport);
 
-    const ProtocolErrorMessage error =
-        parse_protocol_error_json(transport.sent.front());
+    const WorkerErrorMessage error =
+        parse_worker_error_json(transport.sent[1]);
 
     expect(
         error.error.type == "unknown_message_type",
@@ -410,11 +447,13 @@ void test_loop_reports_invalid_job_payload() {
 
     const WorkerStats stats = run_worker(transport);
 
-    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(stats.worker_errors == 1, "expected one worker error");
     expect(stats.jobs_received == 0, "no job should be accepted");
+    expect(transport.sent.size() == 2, "expected ready and one error");
+    expect_ready(transport);
 
-    const ProtocolErrorMessage error =
-        parse_protocol_error_json(transport.sent.front());
+    const WorkerErrorMessage error =
+        parse_worker_error_json(transport.sent[1]);
 
     expect(
         error.error.type == "validation_error",
@@ -438,10 +477,11 @@ void test_loop_returns_invalid_result_for_bad_strategy() {
     const WorkerStats stats = run_worker(transport);
 
     expect(stats.jobs_invalid == 1, "expected one invalid job");
-    expect(transport.sent.size() == 1, "expected one reply");
+    expect(transport.sent.size() == 2, "expected ready and one reply");
+    expect_ready(transport);
 
     const BacktestResultMessage reply =
-        parse_backtest_result_json(transport.sent.front());
+        parse_backtest_result_json(transport.sent[1]);
 
     expect(
         reply.result.status == "invalid",
@@ -482,14 +522,15 @@ void test_loop_stops_at_shutdown() {
         stats.shutdowns_received == 1,
         "expected one shutdown message"
     );
-    expect(stats.protocol_errors == 0, "shutdown is not an error");
+    expect(stats.worker_errors == 0, "shutdown is not an error");
     expect(
-        transport.sent.size() == 1,
-        "shutdown must not produce a reply"
+        transport.sent.size() == 2,
+        "only worker_ready and the job result are sent"
     );
+    expect_ready(transport);
 
     const BacktestResultMessage reply =
-        parse_backtest_result_json(transport.sent.front());
+        parse_backtest_result_json(transport.sent[1]);
     expect(
         reply.message_id == "worker-test:ma-1:0001",
         "the job before shutdown must complete"
@@ -513,15 +554,16 @@ void test_loop_rejects_invalid_shutdown() {
 
     const WorkerStats stats = run_worker(transport);
 
-    expect(stats.protocol_errors == 1, "expected one protocol error");
+    expect(stats.worker_errors == 1, "expected one worker error");
     expect(
         stats.shutdowns_received == 0,
         "an invalid shutdown must not stop the worker"
     );
-    expect(transport.sent.size() == 1, "expected one error reply");
+    expect(transport.sent.size() == 2, "expected ready and one error");
+    expect_ready(transport);
 
-    const ProtocolErrorMessage error =
-        parse_protocol_error_json(transport.sent.front());
+    const WorkerErrorMessage error =
+        parse_worker_error_json(transport.sent[1]);
 
     expect(
         error.error.type == "validation_error",
@@ -538,14 +580,16 @@ void test_loop_rejects_invalid_shutdown() {
 }
 
 void test_loop_stops_at_end_of_input() {
-    // A closed connection is equivalent to a shutdown: the worker exits
-    // without sending anything and without treating it as an error.
+    // A closed connection is equivalent to a shutdown: the worker exits after
+    // its availability announcement, without treating the close as an error.
     MemoryTransport transport({});
     const WorkerStats stats = run_worker(transport);
 
     expect(stats.messages_received == 0, "expected no messages");
     expect(stats.shutdowns_received == 0, "expected no shutdown message");
-    expect(transport.sent.empty(), "expected no replies");
+    expect(stats.ready_messages_sent == 1, "expected one ready message");
+    expect(transport.sent.size() == 1, "expected only worker_ready");
+    expect_ready(transport);
 }
 
 void test_stdio_transport_reads_and_writes() {

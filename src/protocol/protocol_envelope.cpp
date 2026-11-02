@@ -53,6 +53,10 @@ ProtocolMessage parse_protocol_message_json(const std::string& text) {
         std::string(kRootPath) + ".type"
     );
 
+    if (type == "worker_ready") {
+        return protocol_detail::parse_worker_ready_message_document(root);
+    }
+
     if (type == "backtest_job") {
         return protocol_detail::parse_job_message_document(root);
     }
@@ -61,18 +65,18 @@ ProtocolMessage parse_protocol_message_json(const std::string& text) {
         return protocol_detail::parse_result_message_document(root);
     }
 
-    if (type == "protocol_error") {
-        return protocol_detail::parse_error_message_document(root);
-    }
-
     if (type == "shutdown") {
         return protocol_detail::parse_shutdown_message_document(root);
+    }
+
+    if (type == "worker_error" || type == "protocol_error") {
+        return protocol_detail::parse_worker_error_message_document(root);
     }
 
     fail(
         std::string(kRootPath) + ".type",
         "Unknown message type '" + type +
-            "'; expected 'backtest_job', 'backtest_result', "
-            "'protocol_error', or 'shutdown'"
+            "'; expected 'worker_ready', 'backtest_job', "
+            "'backtest_result', 'shutdown', or 'worker_error'"
     );
 }
