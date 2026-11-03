@@ -317,4 +317,6 @@ be sent to a worker as a `backtest_job` message, and the worker replies with a
 The wire contract is documented in [`docs/protocol.md`](protocol.md) and defined
 by [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json) and
 [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json).
-The TCP transport and scheduling layer are not implemented yet.
+[`backtester_coordinator`](coordinator.md) accepts workers over TCP, dispatches
+jobs to idle workers, and aggregates the results into the same response shape
+described above.

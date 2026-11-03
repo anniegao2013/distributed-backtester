@@ -1,10 +1,11 @@
 # Worker protocol
 
 The protocol layer defines the JSON messages that an experiment coordinator and
-backtest workers exchange. It is transport-neutral: this repository defines and
-tests the messages, and [`backtester_worker`](worker.md) implements the worker
-side of the exchange. No TCP server or client exists yet; the worker currently
-uses a line-oriented stdio transport for local development.
+backtest workers exchange. It is transport-neutral: this repository defines,
+tests, and implements the message flow over TCP. The coordinator is the TCP
+server, workers are TCP clients, and [`backtester_worker`](worker.md) can dial
+the coordinator with `--connect`. A line-oriented stdio transport remains
+available for local development.
 
 - Worker ready schema: [`schema/worker_ready.schema.json`](../schema/worker_ready.schema.json)
 - Job schema: [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json)
@@ -34,11 +35,14 @@ either type name; a serializer always emits `worker_error`.
 
 ```text
 experiment request
+  -> coordinator starts a TCP server and listens
   -> coordinator expands strategies into jobs
-  -> worker connects and sends one worker_ready
+  -> workers connect independently and each sends one worker_ready
+  -> coordinator accepts the configured number of workers
   -> one backtest_job per job, each with a unique message_id
   -> worker validates and runs the backtest
   -> one backtest_result per job, echoing message_id
+  -> coordinator assigns the next job to that worker
   -> coordinator aggregates results into the experiment response
   -> coordinator sends one shutdown when the run is complete
   -> worker finishes the current job and closes the connection
@@ -91,9 +95,10 @@ tells the coordinator which identity owns the connection. No reply is defined.
 | `message_id` | Yes | Correlation key for logs and diagnostics. |
 | `worker_id` | Yes | Identity of the worker that owns this connection. |
 
-A future TCP adapter can use this message as the application-level handshake.
-It carries no capacity or strategy inventory in version 1; those can be added
-as optional fields without changing the message flow.
+A worker sends this as the application-level handshake immediately after the
+TCP connection is established. It carries no capacity or strategy inventory in
+version 1; those can be added as optional fields without changing the message
+flow.
 
 ## `backtest_job`
 
@@ -319,10 +324,9 @@ Per-job strategy and data failures still use `backtest_result` with status
 `invalid` or `failed`; that preserves the one-result-per-job guarantee. A
 `worker_error` means no result is available for the message.
 
-A future server should map a `worker_error` to a best-effort reply and then
-decide whether to keep the connection open. A message whose `protocol_version`
-is unknown may use a different envelope entirely, so closing the connection is
-also reasonable.
+The coordinator treats a `worker_error` as a failed attempt for the current job.
+It keeps the connection open because a protocol or execution error may be
+specific to one job, but it records the failure in the aggregate result.
 
 `protocol_error` is the previous name of this message. It remains valid input,
 and an error parsed under that name is serialized as `worker_error`.
@@ -358,23 +362,36 @@ server can echo `message_id` in that reply. The type-specific parsers and
 
 ## Transport notes
 
-The protocol does not define framing yet. The worker loop consumes a
-`WorkerTransport` that yields one JSON document per `receive()` and accepts one
-per `send()` (see [`worker.md`](worker.md)). After `connect()` the worker sends
-one `worker_ready` before it waits for work. The future TCP adapter must preserve
-that boundary and handle partial reads and writes. Likely choices are a
-length-prefixed frame or newline-delimited JSON; whichever is chosen should be
-documented with the adapter and enforced with a maximum message size. The
-current `StdioTransport` uses newline-delimited compact JSON and rejects
-messages above 8 MiB.
+The worker loop consumes a `WorkerTransport` that yields one JSON document per
+`receive()` and accepts one per `send()` (see [`worker.md`](worker.md)). After
+`connect()` the worker sends one `worker_ready` before it waits for work.
 
-The transport will also own concerns that are deliberately not in the message:
+The TCP adapter uses **length-prefixed frames**: a 4-byte big-endian unsigned
+payload length followed by exactly that many bytes of UTF-8 JSON. Frames must be
+non-empty and at most 8 MiB. Partial reads and writes are retried by the
+socket helpers, so a message may arrive in any number of TCP segments. The
+coordinator is the server; each worker is a client and sends `worker_ready`
+immediately after connecting. The worker executable selects TCP with
+`--connect HOST:PORT`; otherwise it keeps using the line-oriented
+`StdioTransport` for local development.
+
+The coordinator accepts the configured number of workers before dispatching.
+It then sends at most one job at a time to each worker. A worker's thread
+blocks on that job's result, so a worker is available for a new job exactly
+when its previous result has arrived. When the job queue is empty the
+coordinator sends one `shutdown` to every worker and aggregates the results.
+
+The transport owns concerns that are deliberately not in the message:
 
 - connection lifecycle and coordinator-side registration bookkeeping;
-- timeouts, retry, and duplicate suppression by `message_id`;
-- backpressure and bounded in-flight jobs;
-- authentication and encryption;
-- logging and metrics around queue, network, and execution time.
+- bounded in-flight jobs and dynamic assignment to available workers;
+- logging and metrics around network and execution time.
+
+Not yet implemented in version 1:
+
+- timeouts, automatic retry, and duplicate suppression by `message_id`;
+- reconnection after a worker drops;
+- authentication and encryption.
 
 ## C++ usage
 

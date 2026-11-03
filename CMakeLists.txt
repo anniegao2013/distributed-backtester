@@ -45,6 +45,7 @@ add_library(backtester_core
 
     # Experiment schema, validation, and execution
     src/experiment/experiment.cpp
+    src/experiment/experiment_aggregate.cpp
     src/experiment/experiment_parse.cpp
     src/experiment/experiment_result_json.cpp
     src/experiment/experiment_runner.cpp
@@ -60,10 +61,17 @@ add_library(backtester_core
     src/protocol/protocol_validate.cpp
     src/protocol/protocol_worker_parse.cpp
 
-    # Worker loop and its local development transport
+    # TCP framing and socket helpers
+    src/net/tcp.cpp
+
+    # Worker loop and its transports
     src/worker/stdio_transport.cpp
+    src/worker/tcp_transport.cpp
     src/worker/worker.cpp
     src/worker/worker_job.cpp
+
+    # Coordinator scheduling and aggregation
+    src/coordinator/coordinator.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -87,6 +95,16 @@ add_executable(backtester_worker
 )
 
 target_link_libraries(backtester_worker PRIVATE backtester_core)
+
+# -------------------------------------------------------------------
+# Coordinator executable
+# -------------------------------------------------------------------
+
+add_executable(backtester_coordinator
+    src/coordinator_main.cpp
+)
+
+target_link_libraries(backtester_coordinator PRIVATE backtester_core)
 
 # -------------------------------------------------------------------
 # Tests
@@ -123,6 +141,9 @@ add_backtester_test(json_value_tests core/json_value_test.cpp)
 add_backtester_test(market_data_tests core/market_data_test.cpp)
 add_backtester_test(parameter_grid_tests core/parameter_grid_test.cpp)
 add_backtester_test(performance_stats_tests core/performance_stats_test.cpp)
+
+# TCP helper
+add_backtester_test(tcp_tests net/tcp_test.cpp)
 
 # Trading model
 add_backtester_test(
@@ -179,6 +200,11 @@ add_backtester_test(
     integration/protocol_examples_test.cpp
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+add_backtester_test(
+    coordinator_tcp_test
+    integration/coordinator_tcp_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
 
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(
@@ -199,5 +225,16 @@ add_backtester_test(
 )
 target_compile_definitions(
     worker_executable_test
+    PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester_worker>\""
+)
+
+# End-to-end test: drives the worker executable through its TCP client path.
+add_backtester_test(
+    tcp_worker_executable_test
+    integration/tcp_worker_executable_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+target_compile_definitions(
+    tcp_worker_executable_test
     PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester_worker>\""
 )

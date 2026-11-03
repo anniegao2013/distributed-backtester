@@ -173,6 +173,18 @@ ExperimentResult run_experiment(
     const ExperimentProgressCallback& on_started = {}
 );
 
+// Aggregates job outcomes into the result document shared by local and
+// distributed runs. `outcomes` must be in request-job order. `cpu_seconds` is
+// the coordinator/process CPU time, not the sum of worker CPU time.
+ExperimentResult build_experiment_result(
+    const ExperimentRequest& request,
+    const ExperimentDataSummary& data_summary,
+    std::vector<ExperimentJobOutcome> outcomes,
+    double wall_seconds,
+    double cpu_seconds,
+    std::size_t max_concurrent
+);
+
 // Serializes a completed (or partially completed) experiment run.
 std::string experiment_result_to_json(
     const ExperimentResult& result,

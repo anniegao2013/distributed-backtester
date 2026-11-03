@@ -1,4 +1,6 @@
+#include "net/tcp.h"
 #include "worker/stdio_transport.h"
+#include "worker/tcp_transport.h"
 #include "worker/worker.h"
 
 #include <cstddef>
@@ -12,20 +14,24 @@ namespace {
 constexpr const char* kUsage =
     "Usage: backtester_worker [options]\n"
     "\n"
-    "Runs a backtest worker. Announces worker_ready, then reads one compact\n"
-    "JSON protocol message per line from stdin, runs up to one backtest per\n"
-    "message, and writes one JSON reply per line to stdout. Diagnostics go to\n"
-    "stderr.\n"
+    "Runs a backtest worker. Announces worker_ready, then reads one protocol\n"
+    "message at a time, runs up to one backtest per job, and replies with one\n"
+    "JSON message. Diagnostics go to stderr.\n"
     "\n"
-    "This is the local development transport. Coordinator/worker TCP is not\n"
-    "implemented yet.\n"
+    "By default messages are one compact JSON document per line on stdin and\n"
+    "stdout. With --connect the worker is a TCP client of a coordinator and\n"
+    "uses length-prefixed frames.\n"
     "\n"
     "Options:\n"
-    "  -w, --worker-id ID  Identity used in worker_ready, results, and errors.\n"
-    "                      Default: worker-local.\n"
-    "  -h, --help          Show this help.\n"
+    "  -w, --worker-id ID     Identity used in worker_ready, results, and\n"
+    "                         errors. Default: worker-local.\n"
+    "  -c, --connect HOST:PORT\n"
+    "                         Connect to a coordinator over TCP instead of\n"
+    "                         using stdio.\n"
+    "  -h, --help             Show this help.\n"
     "\n"
-    "The process exits cleanly at end of input or after a shutdown.\n";
+    "The process exits cleanly at end of input, after a shutdown, or when the\n"
+    "coordinator closes the connection.\n";
 
 bool is_ascii_alphanumeric(char c) {
     return (c >= 'a' && c <= 'z') ||
@@ -57,6 +63,8 @@ bool is_valid_worker_id(const std::string& value) {
 
 struct Options {
     std::string worker_id = "worker-local";
+    bool connect = false;
+    net::TcpEndpoint coordinator;
     bool help = false;
 };
 
@@ -76,6 +84,16 @@ Options parse_options(int argc, char* argv[]) {
             }
 
             options.worker_id = argv[++i];
+        } else if (argument == "-c" || argument == "--connect") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    argument + " requires HOST:PORT"
+                );
+            }
+
+            options.connect = true;
+            options.coordinator =
+                net::parse_tcp_endpoint(argv[++i]);
         } else {
             throw std::invalid_argument(
                 "Unknown argument '" + argument + "'"
@@ -89,6 +107,20 @@ Options parse_options(int argc, char* argv[]) {
             "'; use letters, digits, dots, underscores, hyphens, or colons, "
             "starting with a letter or digit"
         );
+    }
+
+    if (!options.help && options.connect) {
+        if (options.coordinator.host.empty()) {
+            throw std::invalid_argument(
+                "--connect requires a host, for example 127.0.0.1:9000"
+            );
+        }
+
+        if (options.coordinator.port == 0) {
+            throw std::invalid_argument(
+                "--connect requires a non-zero port"
+            );
+        }
     }
 
     return options;
@@ -111,8 +143,17 @@ int main(int argc, char* argv[]) {
             std::cerr << "[worker] " << message << '\n';
         };
 
-        StdioTransport transport(std::cin, std::cout);
-        (void)run_worker(transport, config);
+        if (options.connect) {
+            TcpTransport transport(
+                options.coordinator.host,
+                options.coordinator.port
+            );
+            (void)run_worker(transport, config);
+        } else {
+            StdioTransport transport(std::cin, std::cout);
+            (void)run_worker(transport, config);
+        }
+
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "Worker error: " << error.what() << '\n';

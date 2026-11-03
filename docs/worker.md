@@ -7,16 +7,17 @@ engine: it contains no strategy logic and no new execution model.
 
 The worker loop is transport-neutral. The coordinator/worker wire contract is
 defined in [`protocol.md`](protocol.md); this document covers the process that
-consumes it. A TCP adapter is **not** implemented yet. Today the executable uses
-a line-oriented stdio transport so the full path can be exercised locally.
+consumes it. The worker uses TCP when the executable is given
+`--connect HOST:PORT`; with no coordinator address it keeps the line-oriented
+stdio transport for local development.
 
 ## Lifecycle
 
 The worker connects, announces readiness, then performs the steps below for
 each message:
 
-1. **Connect.** `WorkerTransport::connect()` establishes the connection. For
-   stdio this only checks that both streams are usable.
+1. **Connect.** `WorkerTransport::connect()` establishes the connection. TCP
+   dials the coordinator; stdio only checks that both streams are usable.
 2. **Announce.** The worker sends one `worker_ready` message carrying its
    `worker_id`. The coordinator now knows which worker owns the connection.
 3. **Wait for a message.** `receive()` blocks until one complete JSON message
@@ -86,6 +87,15 @@ belong to the implementation, not the loop. `run_worker()` lets transport
 exceptions propagate, so a broken connection terminates the process with a
 non-zero exit code instead of silently dropping work.
 
+### TCP transport
+
+`TcpTransport` is the production transport and makes the worker a TCP client.
+`connect()` resolves and dials the coordinator. Messages are framed as a 4-byte
+big-endian payload length followed by one UTF-8 JSON document. Frames must be
+non-empty and at most 8 MiB. The socket helpers retry partial reads and writes
+and report a clean close between frames as `std::nullopt`, which ends the worker
+loop normally. A close in the middle of a frame is a transport error.
+
 ### Stdio development transport
 
 `StdioTransport` frames messages as **one compact JSON document per line**.
@@ -94,15 +104,18 @@ written compact and flushed, because pretty-printed JSON contains newlines and
 cannot be line framed. Logs go to stderr so stdout carries only protocol
 messages.
 
-This transport exists to make the worker runnable and testable before TCP is
-written. It is not a production transport and should not be used across
-untrusted boundaries.
+This transport remains useful for local debugging and executable-level tests.
+It is not a production transport and should not be used across untrusted
+boundaries.
 
 ## Usage
 
 ```bash
-# One compact message per line. The worker runs until it reads a shutdown
-# message or reaches end of input.
+# Connect to a coordinator listening on 127.0.0.1:9000.
+./build/backtester_worker --worker-id worker-a --connect 127.0.0.1:9000
+
+# One compact message per line over stdio instead. The worker runs until it
+# reads a shutdown message or reaches end of input.
 ./build/backtester_worker --worker-id worker-a < messages.jsonl > results.jsonl
 
 # Diagnostics are separate from the protocol stream.
@@ -112,7 +125,8 @@ untrusted boundaries.
 ./build/backtester_worker --help
 ```
 
-The first output line is always a ready announcement:
+The first message the worker sends is always a ready announcement (shown as a
+stdio line and, over TCP, as one frame):
 
 ```json
 {
@@ -169,12 +183,12 @@ touches the wire.
 
 ## What is not here yet
 
-- TCP listener/client, framing, reconnection, and timeouts.
-- Coordinator-side registration bookkeeping and heartbeats.
+- Connection timeouts, automatic reconnection, and retry after a worker drops.
+- Heartbeats and worker capacity advertisement.
 - Duplicate suppression by `message_id`.
-- Multiple jobs in flight per worker or a bounded work queue.
-- Coordinator-side aggregation of results back into an experiment response.
+- Multiple jobs in flight per worker.
 
-Those are transport and coordination concerns. The worker loop is already shaped
-to accept them: replace `StdioTransport` with a TCP implementation of
-`WorkerTransport` and the job pipeline is unchanged.
+Those are transport and coordination concerns. The worker loop is deliberately
+small: a TCP client sends `worker_ready`, pulls one job at a time, and exits on
+`shutdown` or a clean close. The coordinator owns registration, scheduling, and
+aggregation; see [`coordinator.md`](coordinator.md).
