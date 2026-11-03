@@ -70,14 +70,24 @@ execution. It excludes queueing and transport time.
 
 ## Transport
 
+The worker consumes the shared communication-layer contract; see
+[`communication.md`](communication.md) for the full definition.
+
 ```cpp
-class WorkerTransport {
+namespace comm {
+
+class MessageChannel {
 public:
-    virtual ~WorkerTransport() = default;
+    virtual ~MessageChannel() = default;
     virtual void connect() {}
     virtual std::optional<std::string> receive() = 0;
     virtual void send(const std::string& message) = 0;
+    virtual void close() {}
 };
+
+}  // namespace comm
+
+using WorkerTransport = comm::MessageChannel;
 ```
 
 `receive()` returns exactly one complete JSON document and `send()` accepts
@@ -89,12 +99,13 @@ non-zero exit code instead of silently dropping work.
 
 ### TCP transport
 
-`TcpTransport` is the production transport and makes the worker a TCP client.
-`connect()` resolves and dials the coordinator. Messages are framed as a 4-byte
-big-endian payload length followed by one UTF-8 JSON document. Frames must be
-non-empty and at most 8 MiB. The socket helpers retry partial reads and writes
-and report a clean close between frames as `std::nullopt`, which ends the worker
-loop normally. A close in the middle of a frame is a transport error.
+`TcpTransport` is an alias for `comm::TcpClientChannel`, the worker side of the
+TCP communication layer. `connect()` resolves and dials the coordinator.
+Messages are framed as a 4-byte big-endian payload length followed by one UTF-8
+JSON document. Frames must be non-empty and at most 8 MiB. The socket helpers
+retry partial reads and writes and report a clean close between frames as
+`std::nullopt`, which ends the worker loop normally. A close in the middle of a
+frame is a transport error.
 
 ### Stdio development transport
 

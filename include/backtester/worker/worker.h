@@ -1,5 +1,6 @@
 #pragma once
 
+#include "comm/message_channel.h"
 #include "protocol/protocol.h"
 #include "trading/backtest_engine.h"
 
@@ -12,32 +13,17 @@
 //
 // A worker owns no scheduling state. After connecting it announces itself with
 // one worker_ready message, then repeatedly receives one JSON message, runs at
-// most one backtest, and replies with exactly one message. The transport is
+// most one backtest, and replies with exactly one message. The channel is
 // injected, so the same worker loop can run over an in-memory queue in tests,
-// over stdio for local development, or over TCP once that adapter exists.
+// over stdio for local development, or over TCP.
 //
 // This layer deliberately contains no socket code. See docs/worker.md.
 
-// Messages in and out. Implementations own framing: receive() returns exactly
-// one complete JSON document and send() accepts exactly one. The worker sends
-// an unsolicited worker_ready message before it starts receiving. Both calls
-// may throw; run_worker() lets transport failures propagate.
-class WorkerTransport {
-public:
-    virtual ~WorkerTransport() = default;
-
-    // Establishes the connection and performs any handshake. The default is a
-    // no-op for transports that are already connected when constructed.
-    virtual void connect() {}
-
-    // Blocks until the next message is available. Returns std::nullopt when
-    // the coordinator closed the connection and the worker should exit.
-    virtual std::optional<std::string> receive() = 0;
-
-    // Sends one complete message. Must not return until the message has been
-    // handed to the transport.
-    virtual void send(const std::string& message) = 0;
-};
+// Messages in and out. This is the common communication-layer contract;
+// implementations own framing and connection lifecycle. The worker sends an
+// unsolicited worker_ready message before it starts receiving. Both calls may
+// throw; run_worker() lets transport failures propagate.
+using WorkerTransport = comm::MessageChannel;
 
 struct WorkerConfig {
     // Echoed in every result as `worker_id`. Must satisfy the protocol's

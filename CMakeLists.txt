@@ -64,9 +64,11 @@ add_library(backtester_core
     # TCP framing and socket helpers
     src/net/tcp.cpp
 
+    # Communication layer: one JSON document per channel operation
+    src/comm/tcp_channel.cpp
+
     # Worker loop and its transports
     src/worker/stdio_transport.cpp
-    src/worker/tcp_transport.cpp
     src/worker/worker.cpp
     src/worker/worker_job.cpp
 
@@ -144,6 +146,12 @@ add_backtester_test(performance_stats_tests core/performance_stats_test.cpp)
 
 # TCP helper
 add_backtester_test(tcp_tests net/tcp_test.cpp)
+
+# Communication layer
+add_backtester_test(
+    communication_channel_tests
+    comm/message_channel_test.cpp
+)
 
 # Trading model
 add_backtester_test(

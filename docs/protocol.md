@@ -362,8 +362,9 @@ server can echo `message_id` in that reply. The type-specific parsers and
 
 ## Transport notes
 
-The worker loop consumes a `WorkerTransport` that yields one JSON document per
-`receive()` and accepts one per `send()` (see [`worker.md`](worker.md)). After
+The worker loop consumes a `comm::MessageChannel` implementation that yields
+one JSON document per `receive()` and accepts one per `send()` (see
+[`communication.md`](communication.md) and [`worker.md`](worker.md)). After
 `connect()` the worker sends one `worker_ready` before it waits for work.
 
 The TCP adapter uses **length-prefixed frames**: a 4-byte big-endian unsigned

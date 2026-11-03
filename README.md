@@ -40,6 +40,7 @@ include/backtester/
   experiment/    Versioned experiment schema and service entry point
   protocol/      Coordinator <-> worker wire message types
   net/           TCP listening, connecting, and length-prefixed framing
+  comm/          Transport-neutral one-document-per-call channel contract
   worker/        Worker transport interface, TCP/stdio transports, job execution
   coordinator/   Worker registration, job dispatch, and result aggregation
 src/
@@ -49,6 +50,7 @@ src/
   experiment/    Request parsing, validation, execution, and result JSON
   protocol/      Job/result parsing, validation, and serialization
   net/           TCP socket and framing implementation
+  comm/          TCP channel implementations
   worker/        Worker loop, job execution, and stdio/TCP transports
   coordinator/   TCP server and distributed scheduling loop
   main.cpp       Local CLI entry point
@@ -61,6 +63,7 @@ tests/
   experiment/    Schema, service, and parallel-execution tests
   protocol/      Wire message parsing, validation, and round-trip tests
   net/           TCP framing and endpoint tests
+  comm/          Communication-layer contract and channel tests
   worker/        Worker loop, job execution, and transport tests
   integration/   Real-data, protocol-example, worker, coordinator, pipeline, and end-to-end tests
 ```
@@ -96,12 +99,15 @@ The JSON Schemas live in [`schema/`](schema) and example requests in
 
 ## Distributed Execution
 
-The coordinator is a TCP server and each worker is a TCP client. The coordinator
-expands an experiment into `backtest_job` messages and assigns work dynamically:
-a worker is available exactly when it has finished its previous job. The worker
-runs the existing engine and replies with a `backtest_result`. When the queue is
-empty the coordinator sends `shutdown` to every worker and aggregates the
-results into the same experiment response produced by a local run.
+The coordinator is a TCP server and each worker is a TCP client. Both use the
+same transport-neutral `comm::MessageChannel` contract: one JSON document per
+send/receive, with framing and connection lifecycle owned by the channel. The
+coordinator expands an experiment into `backtest_job` messages and assigns work
+dynamically: a worker is available exactly when it has finished its previous
+job. The worker runs the existing engine and replies with a `backtest_result`.
+When the queue is empty the coordinator sends `shutdown` to every worker and
+aggregates the results into the same experiment response produced by a local
+run.
 
 ```bash
 # Terminal 1: coordinator. It waits for two workers before dispatching.
@@ -129,7 +135,8 @@ and serializes the result. It loops for another job until it receives a
 `shutdown` message or loses its connection.
 
 See [`docs/coordinator.md`](docs/coordinator.md) for scheduling and failure
-handling, [`docs/worker.md`](docs/worker.md) for the worker lifecycle, and
-[`docs/protocol.md`](docs/protocol.md) for the wire contract. Message schemas
-live in [`schema/`](schema) and protocol examples in
+handling, [`docs/communication.md`](docs/communication.md) for the channel
+contract and framing, [`docs/worker.md`](docs/worker.md) for the worker
+lifecycle, and [`docs/protocol.md`](docs/protocol.md) for the wire contract.
+Message schemas live in [`schema/`](schema) and protocol examples in
 [`examples/protocol/`](examples/protocol).

@@ -30,6 +30,10 @@ A worker is available exactly when it has finished its previous job. The
 coordinator blocks on that worker's reply and then hands it the next queued job.
 Slow jobs therefore do not hold up other workers.
 
+Each accepted connection is a `comm::TcpChannel` implementing the shared
+[`comm::MessageChannel`](communication.md) contract. The coordinator sends and
+receives whole JSON documents and leaves framing to the communication layer.
+
 ## Usage
 
 ```bash

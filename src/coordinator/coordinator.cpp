@@ -1,5 +1,6 @@
 #include "coordinator/coordinator.h"
 
+#include "comm/tcp_channel.h"
 #include "core/market_data.h"
 #include "protocol/protocol.h"
 
@@ -190,7 +191,7 @@ ExperimentJobOutcome result_to_outcome(
 }
 
 struct WorkerConnection {
-    net::TcpSocket socket;
+    comm::TcpChannel channel;
     std::string worker_id;
 };
 
@@ -236,10 +237,10 @@ ExperimentJobOutcome dispatch_one(
     const BacktestJobMessage& job,
     SharedState& shared
 ) {
-    worker.socket.send_frame(backtest_job_to_json(job, /*pretty=*/false));
+    worker.channel.send(backtest_job_to_json(job, /*pretty=*/false));
     shared.jobs_dispatched.fetch_add(1);
 
-    const std::optional<std::string> reply = worker.socket.receive_frame();
+    const std::optional<std::string> reply = worker.channel.receive();
 
     if (!reply) {
         throw std::runtime_error(
@@ -443,9 +444,8 @@ ExperimentResult run_distributed_experiment(
             " of " + std::to_string(config.expected_workers)
         );
 
-        net::TcpSocket socket = listener.accept();
-        const std::optional<std::string> announcement =
-            socket.receive_frame();
+        comm::TcpChannel channel(listener.accept());
+        const std::optional<std::string> announcement = channel.receive();
 
         if (!announcement) {
             throw std::runtime_error(
@@ -477,7 +477,7 @@ ExperimentResult run_distributed_experiment(
         );
 
         workers.push_back(
-            WorkerConnection{std::move(socket), ready.worker_id}
+            WorkerConnection{std::move(channel), ready.worker_id}
         );
     }
 
@@ -531,7 +531,7 @@ ExperimentResult run_distributed_experiment(
         shutdown.reason = "experiment run complete";
 
         try {
-            workers[i].socket.send_frame(
+            workers[i].channel.send(
                 shutdown_to_json(shutdown, /*pretty=*/false)
             );
             logger.log(
@@ -544,7 +544,7 @@ ExperimentResult run_distributed_experiment(
             );
         }
 
-        workers[i].socket.close();
+        workers[i].channel.close();
     }
 
     const double wall_seconds =
