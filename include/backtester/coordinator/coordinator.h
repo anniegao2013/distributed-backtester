@@ -12,12 +12,12 @@
 //
 // The coordinator is the TCP server. It binds a listening socket, accepts the
 // configured number of workers, waits for each worker's worker_ready
-// announcement, then dispatches the experiment's expanded jobs. Jobs are
-// handed to whichever worker finishes first, so a slow job never blocks the
-// others. Each worker executes one job at a time and replies with exactly one
-// backtest_result. When the queue is empty the coordinator sends shutdown to
-// every worker and aggregates the results into the same ExperimentResult that
-// a local run produces.
+// announcement, then dispatches the experiment's expanded jobs. Jobs are queued
+// in request order and handed out FIFO to whichever worker finishes first, so a
+// slow job never blocks the others. Each worker executes one job at a time and
+// replies with exactly one backtest_result. When the queue is empty the
+// coordinator sends shutdown to every worker and aggregates the results into the
+// same ExperimentResult that a local run produces.
 
 struct CoordinatorConfig {
     // Bind address. An empty host listens on all interfaces. Port 0 asks the

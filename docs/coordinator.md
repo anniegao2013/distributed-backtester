@@ -70,8 +70,14 @@ fully-expanded list of concrete backtests. The coordinator builds one
 `backtest_job` per entry, attaching the experiment's `data`, `execution`, and
 `output` settings and choosing a unique `message_id`.
 
-Jobs live in a shared queue. Each worker thread pulls the next job when it has a
-permit and the worker connection is idle. The number of permits is:
+Every job is appended to a thread-safe FIFO `JobQueue` in request order before
+any worker thread starts. The queue is then closed, so workers stop waiting once
+the last job has been handed out. Each worker thread acquires a concurrency
+permit and calls `pop()`, which blocks until the next job is available and always
+returns the oldest queued job. Distribution is therefore FIFO: the oldest queued
+job is claimed first even though several workers pop concurrently.
+
+The number of permits is:
 
 ```text
 min(execution.max_concurrent_jobs or hardware_concurrency, connected workers)

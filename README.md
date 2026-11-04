@@ -102,12 +102,12 @@ The JSON Schemas live in [`schema/`](schema) and example requests in
 The coordinator is a TCP server and each worker is a TCP client. Both use the
 same transport-neutral `comm::MessageChannel` contract: one JSON document per
 send/receive, with framing and connection lifecycle owned by the channel. The
-coordinator expands an experiment into `backtest_job` messages and assigns work
-dynamically: a worker is available exactly when it has finished its previous
-job. The worker runs the existing engine and replies with a `backtest_result`.
-When the queue is empty the coordinator sends `shutdown` to every worker and
-aggregates the results into the same experiment response produced by a local
-run.
+coordinator expands an experiment into `backtest_job` messages and queues them in
+request order for FIFO distribution: a worker is available exactly when it has
+finished its previous job and takes the oldest queued job. The worker runs the
+existing engine and replies with a `backtest_result`. When the queue is empty the
+coordinator sends `shutdown` to every worker and aggregates the results into the
+same experiment response produced by a local run.
 
 ```bash
 # Terminal 1: coordinator. It waits for two workers before dispatching.

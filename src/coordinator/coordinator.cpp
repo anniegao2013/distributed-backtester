@@ -1,6 +1,7 @@
 #include "coordinator/coordinator.h"
 
 #include "comm/tcp_channel.h"
+#include "coordinator/job_queue.h"
 #include "core/market_data.h"
 #include "protocol/protocol.h"
 
@@ -196,10 +197,8 @@ struct WorkerConnection {
 };
 
 struct SharedState {
-    std::vector<BacktestJobMessage> jobs;
     std::vector<ExperimentJobOutcome> outcomes;
 
-    std::atomic<std::size_t> next_job{0};
     std::atomic<std::size_t> jobs_dispatched{0};
     std::atomic<std::size_t> results_received{0};
     std::atomic<std::size_t> worker_errors{0};
@@ -304,6 +303,7 @@ ExperimentJobOutcome dispatch_one(
 
 void worker_loop(
     WorkerConnection& worker,
+    JobQueue& queue,
     SharedState& shared,
     JobGate& gate,
     Logger& logger
@@ -311,14 +311,17 @@ void worker_loop(
     for (;;) {
         gate.acquire();
 
-        const std::size_t index = shared.next_job.fetch_add(1);
+        std::optional<QueuedJob> queued = queue.pop();
 
-        if (index >= shared.jobs.size()) {
+        // A nullopt means the queue is closed and empty: every job has
+        // already been handed to a worker.
+        if (!queued) {
             gate.release();
             return;
         }
 
-        const BacktestJobMessage& job = shared.jobs[index];
+        const std::size_t index = queued->index;
+        const BacktestJobMessage& job = queued->message;
 
         logger.log(
             "assigning job '" + job.job.job_id + "' to worker '" +
@@ -347,7 +350,7 @@ void worker_loop(
             );
 
             // The connection is no longer usable. Remaining jobs stay in the
-            // shared queue for the other workers.
+            // queue for the other workers.
             return;
         }
     }
@@ -487,7 +490,6 @@ ExperimentResult run_distributed_experiment(
         choose_max_concurrent(request, workers.size());
 
     SharedState shared;
-    shared.jobs = build_job_messages(request);
     shared.outcomes.reserve(request.jobs.size());
 
     for (const ExperimentJob& job : request.jobs) {
@@ -495,6 +497,17 @@ ExperimentResult run_distributed_experiment(
             failed_outcome(job, "job was not dispatched to a worker")
         );
     }
+
+    // Every expanded job enters the FIFO queue once, in request order. All jobs
+    // are enqueued before any worker thread starts, so the queue is then closed
+    // to signal that no further work will arrive.
+    JobQueue queue;
+
+    std::vector<BacktestJobMessage> messages = build_job_messages(request);
+    for (std::size_t i = 0; i < messages.size(); ++i) {
+        queue.push(QueuedJob{i, std::move(messages[i])});
+    }
+    queue.close();
 
     const auto wall_start = std::chrono::steady_clock::now();
     const double cpu_start = process_cpu_seconds();
@@ -508,6 +521,7 @@ ExperimentResult run_distributed_experiment(
         threads.emplace_back(
             worker_loop,
             std::ref(worker),
+            std::ref(queue),
             std::ref(shared),
             std::ref(gate),
             std::ref(logger)
