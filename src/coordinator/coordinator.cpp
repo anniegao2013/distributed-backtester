@@ -3,6 +3,7 @@
 #include "comm/tcp_channel.h"
 #include "coordinator/job_queue.h"
 #include "core/market_data.h"
+#include "experiment/result_collector.h"
 #include "protocol/protocol.h"
 
 #include <algorithm>
@@ -197,8 +198,6 @@ struct WorkerConnection {
 };
 
 struct SharedState {
-    std::vector<ExperimentJobOutcome> outcomes;
-
     std::atomic<std::size_t> jobs_dispatched{0};
     std::atomic<std::size_t> results_received{0};
     std::atomic<std::size_t> worker_errors{0};
@@ -304,6 +303,7 @@ ExperimentJobOutcome dispatch_one(
 void worker_loop(
     WorkerConnection& worker,
     JobQueue& queue,
+    ExperimentResultCollector& results,
     SharedState& shared,
     JobGate& gate,
     Logger& logger
@@ -329,18 +329,24 @@ void worker_loop(
         );
 
         try {
-            shared.outcomes[index] = dispatch_one(worker, job, shared);
-            gate.release();
+            ExperimentJobOutcome outcome =
+                dispatch_one(worker, job, shared);
 
             logger.log(
-                shared.outcomes[index].ok
+                outcome.ok
                     ? "worker '" + worker.worker_id + "' completed job '" +
                           job.job.job_id + "'"
                     : "worker '" + worker.worker_id + "' failed job '" +
                           job.job.job_id + "'"
             );
+
+            results.record(index, std::move(outcome));
+            gate.release();
         } catch (const std::exception& error) {
-            shared.outcomes[index] = failed_outcome(job.job, error.what());
+            results.record(
+                index,
+                failed_outcome(job.job, error.what())
+            );
             shared.transport_failures.fetch_add(1);
             gate.release();
 
@@ -490,13 +496,11 @@ ExperimentResult run_distributed_experiment(
         choose_max_concurrent(request, workers.size());
 
     SharedState shared;
-    shared.outcomes.reserve(request.jobs.size());
 
-    for (const ExperimentJob& job : request.jobs) {
-        shared.outcomes.push_back(
-            failed_outcome(job, "job was not dispatched to a worker")
-        );
-    }
+    // Both local threads and remote workers report through this collector.
+    // Jobs that never reach a worker are marked terminal after all workers
+    // have stopped, so aggregation never observes a pending slot.
+    ExperimentResultCollector results(request.jobs);
 
     // Every expanded job enters the FIFO queue once, in request order. All jobs
     // are enqueued before any worker thread starts, so the queue is then closed
@@ -522,6 +526,7 @@ ExperimentResult run_distributed_experiment(
             worker_loop,
             std::ref(worker),
             std::ref(queue),
+            std::ref(results),
             std::ref(shared),
             std::ref(gate),
             std::ref(logger)
@@ -532,11 +537,26 @@ ExperimentResult run_distributed_experiment(
         thread.join();
     }
 
+    // A job is terminal when it has completed or failed. If every worker
+    // stopped while jobs were still queued, those jobs can no longer run, so
+    // record them as failed before declaring the experiment complete.
+    const std::size_t abandoned = results.fail_remaining(
+        "job was not dispatched to a worker"
+    );
+
+    if (abandoned > 0) {
+        logger.log(
+            std::to_string(abandoned) +
+            " job(s) were not dispatched to a worker"
+        );
+    }
+
+    results.wait();
+
     const auto wall_end = std::chrono::steady_clock::now();
     const double cpu_end = process_cpu_seconds();
 
-    // Every job has been either handled or left unassigned because all
-    // workers failed. In both cases the outcome vector is complete.
+    std::vector<ExperimentJobOutcome> outcomes = results.take();
 
     for (std::size_t i = 0; i < workers.size(); ++i) {
         ShutdownMessage shutdown;
@@ -575,7 +595,7 @@ ExperimentResult run_distributed_experiment(
     return build_experiment_result(
         request,
         data_summary,
-        std::move(shared.outcomes),
+        std::move(outcomes),
         wall_seconds,
         cpu_end - cpu_start,
         max_concurrent

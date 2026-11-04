@@ -108,6 +108,18 @@ workers.
 
 ## Aggregation and output
 
+Local threads and remote workers report into the same
+`ExperimentResultCollector`, keyed by the job's index in
+`ExperimentRequest::jobs`. A job is terminal as soon as it has either completed
+or failed; results may arrive in any order and the collector returns them in
+request order. The run waits until every job is terminal, so a mix of successes
+and failures always produces one complete response document.
+
+If every worker stops while jobs are still queued, the coordinator marks those
+jobs failed with `job was not dispatched to a worker` before completing. This is
+the only point where the coordinator synthesizes outcomes; it never waits for
+work that no connected worker can perform.
+
 Results are aggregated by the same `build_experiment_result()` helper used by
 local runs. The returned `ExperimentResult` contains:
 

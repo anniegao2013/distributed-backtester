@@ -50,6 +50,7 @@ add_library(backtester_core
     src/experiment/experiment_result_json.cpp
     src/experiment/experiment_runner.cpp
     src/experiment/experiment_validate.cpp
+    src/experiment/result_collector.cpp
     src/experiment/strategy_registry.cpp
 
     # Coordinator <-> worker wire protocol
@@ -182,6 +183,9 @@ add_backtester_test(
 # Experiment schema, service entry point, and execution
 add_backtester_test(experiment_tests experiment/experiment_test.cpp)
 add_backtester_test(
+    result_collector_tests experiment/result_collector_test.cpp
+)
+add_backtester_test(
     parallel_execution_tests experiment/parallel_execution_test.cpp
 )
 
@@ -215,6 +219,11 @@ add_backtester_test(
 add_backtester_test(
     coordinator_tcp_test
     integration/coordinator_tcp_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+add_backtester_test(
+    coordinator_failure_test
+    integration/coordinator_failure_test.cpp
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 

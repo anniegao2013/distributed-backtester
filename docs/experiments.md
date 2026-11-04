@@ -318,5 +318,7 @@ The wire contract is documented in [`docs/protocol.md`](protocol.md) and defined
 by [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json) and
 [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json).
 [`backtester_coordinator`](coordinator.md) accepts workers over TCP, dispatches
-jobs to idle workers, and aggregates the results into the same response shape
-described above.
+jobs to idle workers, and reports every completed or failed result into the same
+terminal-state collector used by local execution. The run completes only when
+every job is terminal, then aggregates into the same response shape described
+above.

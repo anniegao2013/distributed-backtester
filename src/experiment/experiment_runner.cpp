@@ -1,6 +1,7 @@
 #include "experiment_internal.h"
 
 #include "core/market_data.h"
+#include "experiment/result_collector.h"
 
 #include <algorithm>
 #include <chrono>
@@ -53,6 +54,23 @@ ExperimentJobOutcome run_job(
 
     return outcome;
 }
+
+ExperimentJobOutcome failed_outcome(
+    const ExperimentJob& job,
+    const std::string& error
+) {
+    ExperimentJobOutcome outcome;
+    outcome.job = job;
+    outcome.error = error.empty()
+        ? "job did not reach a terminal state"
+        : error;
+    return outcome;
+}
+
+struct InFlightJob {
+    std::size_t index = 0;
+    std::future<ExperimentJobOutcome> future;
+};
 
 double process_cpu_seconds() {
     struct rusage usage;
@@ -108,10 +126,12 @@ ExperimentResult run_experiment(
     const double cpu_start = process_cpu_seconds();
     const auto wall_start = std::chrono::steady_clock::now();
 
-    std::vector<ExperimentJobOutcome> outcomes;
-    outcomes.reserve(request.jobs.size());
+    // Local execution reports into the same collector the coordinator uses.
+    // The runner never inspects execution details; it only waits for every job
+    // to become terminal and then hands the ordered outcomes to aggregation.
+    ExperimentResultCollector collector(request.jobs);
 
-    std::vector<std::future<ExperimentJobOutcome>> in_flight;
+    std::vector<InFlightJob> in_flight;
     in_flight.reserve(max_concurrent);
 
     std::size_t next_job = 0;
@@ -120,22 +140,45 @@ ExperimentResult run_experiment(
         while (next_job < request.jobs.size() &&
                in_flight.size() < max_concurrent) {
             in_flight.push_back(
-                std::async(
-                    std::launch::async,
-                    run_job,
-                    std::cref(dataset),
-                    std::cref(request.data),
-                    std::cref(request.execution),
-                    request.jobs[next_job]
-                )
+                InFlightJob{
+                    next_job,
+                    std::async(
+                        std::launch::async,
+                        run_job,
+                        std::cref(dataset),
+                        std::cref(request.data),
+                        std::cref(request.execution),
+                        request.jobs[next_job]
+                    )
+                }
             );
             ++next_job;
         }
 
         // Retire the oldest job before launching another one.
-        outcomes.push_back(in_flight.front().get());
+        InFlightJob& current = in_flight.front();
+        ExperimentJobOutcome outcome;
+
+        try {
+            outcome = current.future.get();
+        } catch (const std::exception& error) {
+            outcome = failed_outcome(
+                request.jobs[current.index],
+                error.what()
+            );
+        } catch (...) {
+            outcome = failed_outcome(
+                request.jobs[current.index],
+                "job threw an unknown exception"
+            );
+        }
+
+        collector.record(current.index, std::move(outcome));
         in_flight.erase(in_flight.begin());
     }
+
+    collector.wait();
+    std::vector<ExperimentJobOutcome> outcomes = collector.take();
 
     const auto wall_end = std::chrono::steady_clock::now();
     const double cpu_end = process_cpu_seconds();

@@ -173,9 +173,12 @@ ExperimentResult run_experiment(
     const ExperimentProgressCallback& on_started = {}
 );
 
-// Aggregates job outcomes into the result document shared by local and
-// distributed runs. `outcomes` must be in request-job order. `cpu_seconds` is
-// the coordinator/process CPU time, not the sum of worker CPU time.
+// Aggregates terminal job outcomes into the result document shared by local and
+// distributed runs. Both execution paths report through
+// ExperimentResultCollector, so this function never needs to know where a job
+// ran. `outcomes` must be in request-job order and contain exactly one completed
+// or failed outcome per job. `cpu_seconds` is the coordinator/process CPU time,
+// not the sum of worker CPU time.
 ExperimentResult build_experiment_result(
     const ExperimentRequest& request,
     const ExperimentDataSummary& data_summary,
