@@ -18,6 +18,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Worker protocol:** Versioned JSON messages for availability (`worker_ready`), coordinator-to-worker jobs (`backtest_job`), worker-to-coordinator results (`backtest_result`), shutdown (`shutdown`), and errors (`worker_error`), with strict parsing, validation, and JSON Schemas. Messages travel over TCP using length-prefixed frames.
 - **Standalone worker:** `backtester_worker` connects to a coordinator with `--connect HOST:PORT`, announces `worker_ready`, then receives one job at a time, runs the existing engine, and replies with one result. It keeps serving until it receives a `shutdown` message or its connection closes. The same loop also runs over a line-oriented stdio transport for local debugging.
 - **Distributed coordinator:** `backtester_coordinator` is a TCP server that accepts workers, expands an experiment into jobs, assigns each job to an available worker, collects results, and aggregates them into the normal experiment response. Slow jobs do not block other workers.
+- **Coordinator-owned job states:** Every job moves through `pending`, `running`, `completed`, or `failed` in a coordinator-side state table. Workers only report results; the coordinator is the single source of truth and exposes transitions to observers.
 - **Terminal-state aggregation:** Local threads and remote workers both report into one result collector indexed by request order. An experiment finishes only when every job has completed or failed, and the same aggregation code builds the response regardless of where the job ran.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
@@ -43,7 +44,7 @@ include/backtester/
   net/           TCP listening, connecting, and length-prefixed framing
   comm/          Transport-neutral one-document-per-call channel contract
   worker/        Worker transport interface, TCP/stdio transports, job execution
-  coordinator/   Worker registration, job dispatch, and result aggregation
+  coordinator/   Worker registration, job state, FIFO dispatch, and aggregation
 src/
   core/          Implementations of the core utilities
   trading/       Implementations of the trading model

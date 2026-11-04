@@ -88,6 +88,31 @@ connect. With the default of `0`, all accepted workers can run concurrently.
 Outcomes are written back into the original request-job order, so the aggregated
 document is deterministic regardless of which worker ran which job.
 
+## Job states
+
+The coordinator is the single source of truth for job state. Workers only send
+results; they never publish or persist state themselves.
+
+| State | Meaning |
+| --- | --- |
+| `pending` | Waiting in the coordinator's FIFO job queue. |
+| `running` | Assigned to a worker and currently executing. |
+| `completed` | A successful result was received. |
+| `failed` | Execution, transport, or result processing failed. |
+
+A job moves `pending -> running` when a coordinator worker thread takes it from
+the queue. It then moves to `completed` or `failed` when that job reaches a
+terminal outcome. `completed` requires a successful result; a worker-reported
+`failed`/`invalid` result, a `worker_error`, or a transport/protocol failure ends
+as `failed`. Jobs still queued after every worker has stopped move directly
+`pending -> failed` as `job was not dispatched to a worker`. Terminal states are
+final.
+
+Progress observers can set `CoordinatorConfig::on_job_state_changed`. Callbacks
+are serialized by the coordinator, though they may run on a worker thread.
+`CoordinatorStats::job_states` contains the final state of every job in request
+order after `run_distributed_experiment()` returns.
+
 ## Failure handling
 
 | Situation | Result |
@@ -151,17 +176,22 @@ config.listen_host = "0.0.0.0";
 config.listen_port = 9000;
 config.expected_workers = 4;
 config.log = [](const std::string& line) { /* stderr */ };
+config.on_job_state_changed = [](const JobStateTransition& change) {
+    // change.index, change.job_id, change.from, change.to
+};
 
 CoordinatorStats stats;
 const ExperimentResult result =
     run_distributed_experiment(request, config, &stats);
+
+// stats.job_states holds the final state per request job.
 ```
 
 `run_distributed_experiment()` blocks for the whole run. `on_listening` fires
 after the listening socket is bound and before the first accept, which is
 useful for tests that bind port `0` and need the actual port. `CoordinatorStats`
 reports registered workers, dispatched jobs, received results, worker errors,
-and transport failures.
+transport failures, and the final coordinator-owned job state table.
 
 ## Limitations
 

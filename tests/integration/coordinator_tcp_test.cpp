@@ -80,6 +80,16 @@ int main() {
         ExperimentResult distributed;
         CoordinatorStats stats;
 
+        std::vector<std::vector<JobStateTransition>> transitions(
+            request.jobs.size()
+        );
+        std::mutex transition_mutex;
+
+        config.on_job_state_changed = [&](const JobStateTransition& change) {
+            std::lock_guard<std::mutex> lock(transition_mutex);
+            transitions.at(change.index).push_back(change);
+        };
+
         config.on_listening = [&](const net::TcpEndpoint& endpoint) {
             {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -195,6 +205,39 @@ int main() {
             !distributed.summary.best_job_id.empty(),
             "the aggregate must select a best job"
         );
+        expect(
+            stats.job_states.size() == request.jobs.size(),
+            "the coordinator must report a state for every job"
+        );
+
+        for (std::size_t i = 0; i < request.jobs.size(); ++i) {
+            expect(
+                stats.job_states[i] == JobState::completed,
+                "every distributed job must finish completed"
+            );
+
+            const std::vector<JobStateTransition>& job_transitions =
+                transitions[i];
+
+            expect(
+                job_transitions.size() == 2,
+                "a completed job must move pending -> running -> completed"
+            );
+            expect(
+                job_transitions[0].from == JobState::pending &&
+                    job_transitions[0].to == JobState::running,
+                "the first transition must enter running"
+            );
+            expect(
+                job_transitions[1].from == JobState::running &&
+                    job_transitions[1].to == JobState::completed,
+                "the second transition must enter completed"
+            );
+            expect(
+                job_transitions[0].job_id == request.jobs[i].job_id,
+                "state transitions must identify the request job"
+            );
+        }
 
         for (std::size_t i = 0; i < distributed.results.size(); ++i) {
             const ExperimentJobOutcome& outcome = distributed.results[i];

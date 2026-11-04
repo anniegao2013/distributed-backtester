@@ -2,6 +2,7 @@
 
 #include "comm/tcp_channel.h"
 #include "coordinator/job_queue.h"
+#include "coordinator/job_state.h"
 #include "core/market_data.h"
 #include "experiment/result_collector.h"
 #include "protocol/protocol.h"
@@ -38,6 +39,34 @@ public:
 
         std::lock_guard<std::mutex> lock(mutex_);
         config_.log(text);
+    }
+
+private:
+    const CoordinatorConfig& config_;
+    std::mutex mutex_;
+};
+
+// Serializes job-state callbacks from concurrent worker threads. State changes
+// are committed by JobStateTracker before the callback runs, so an observer
+// never sees a partially applied transition.
+class JobStateObserver {
+public:
+    explicit JobStateObserver(const CoordinatorConfig& config)
+        : config_(config) {}
+
+    void publish(const JobStateTransition& transition) noexcept {
+        if (!config_.on_job_state_changed) {
+            return;
+        }
+
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            config_.on_job_state_changed(transition);
+        } catch (...) {
+            // Observers are read-only: a throwing callback must not be able to
+            // leave the coordinator's state table inconsistent or kill a
+            // worker thread. The transition is already committed.
+        }
     }
 
 private:
@@ -303,6 +332,8 @@ ExperimentJobOutcome dispatch_one(
 void worker_loop(
     WorkerConnection& worker,
     JobQueue& queue,
+    JobStateTracker& states,
+    JobStateObserver& state_observer,
     ExperimentResultCollector& results,
     SharedState& shared,
     JobGate& gate,
@@ -323,6 +354,10 @@ void worker_loop(
         const std::size_t index = queued->index;
         const BacktestJobMessage& job = queued->message;
 
+        // The coordinator transitions the job before handing it to the
+        // worker, so "running" means assigned to a specific worker.
+        state_observer.publish(states.mark_running(index));
+
         logger.log(
             "assigning job '" + job.job.job_id + "' to worker '" +
             worker.worker_id + "'"
@@ -331,9 +366,10 @@ void worker_loop(
         try {
             ExperimentJobOutcome outcome =
                 dispatch_one(worker, job, shared);
+            const bool completed = outcome.ok;
 
             logger.log(
-                outcome.ok
+                completed
                     ? "worker '" + worker.worker_id + "' completed job '" +
                           job.job.job_id + "'"
                     : "worker '" + worker.worker_id + "' failed job '" +
@@ -341,12 +377,18 @@ void worker_loop(
             );
 
             results.record(index, std::move(outcome));
+            state_observer.publish(
+                completed
+                    ? states.mark_completed(index)
+                    : states.mark_failed(index)
+            );
             gate.release();
         } catch (const std::exception& error) {
             results.record(
                 index,
                 failed_outcome(job.job, error.what())
             );
+            state_observer.publish(states.mark_failed(index));
             shared.transport_failures.fetch_add(1);
             gate.release();
 
@@ -497,9 +539,12 @@ ExperimentResult run_distributed_experiment(
 
     SharedState shared;
 
-    // Both local threads and remote workers report through this collector.
-    // Jobs that never reach a worker are marked terminal after all workers
-    // have stopped, so aggregation never observes a pending slot.
+    // The coordinator owns job state. Both local threads and remote workers
+    // report through the same collector, while the tracker records the
+    // pending -> running -> completed/failed lifecycle.
+    JobStateTracker states(request.jobs);
+    JobStateObserver state_observer(config);
+
     ExperimentResultCollector results(request.jobs);
 
     // Every expanded job enters the FIFO queue once, in request order. All jobs
@@ -526,6 +571,8 @@ ExperimentResult run_distributed_experiment(
             worker_loop,
             std::ref(worker),
             std::ref(queue),
+            std::ref(states),
+            std::ref(state_observer),
             std::ref(results),
             std::ref(shared),
             std::ref(gate),
@@ -543,6 +590,18 @@ ExperimentResult run_distributed_experiment(
     const std::size_t abandoned = results.fail_remaining(
         "job was not dispatched to a worker"
     );
+    const std::vector<JobStateTransition> pending_failures =
+        states.fail_pending();
+
+    for (const JobStateTransition& transition : pending_failures) {
+        state_observer.publish(transition);
+    }
+
+    if (abandoned != pending_failures.size()) {
+        throw std::logic_error(
+            "coordinator state mismatch while terminating pending jobs"
+        );
+    }
 
     if (abandoned > 0) {
         logger.log(
@@ -590,6 +649,7 @@ ExperimentResult run_distributed_experiment(
         stats->results_received = shared.results_received.load();
         stats->worker_errors = shared.worker_errors.load();
         stats->transport_failures = shared.transport_failures.load();
+        stats->job_states = states.snapshot();
     }
 
     return build_experiment_result(

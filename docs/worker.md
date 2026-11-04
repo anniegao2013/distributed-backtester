@@ -11,6 +11,10 @@ consumes it. The worker uses TCP when the executable is given
 `--connect HOST:PORT`; with no coordinator address it keeps the line-oriented
 stdio transport for local development.
 
+Workers do not track job state. They report one result per job, and the
+coordinator is the single source of truth for whether that job is `running`,
+`completed`, or `failed`.
+
 ## Lifecycle
 
 The worker connects, announces readiness, then performs the steps below for

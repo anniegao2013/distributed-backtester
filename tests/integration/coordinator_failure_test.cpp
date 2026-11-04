@@ -13,6 +13,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -81,6 +82,16 @@ int main() {
         ExperimentResult distributed;
         CoordinatorStats stats;
 
+        std::vector<std::vector<JobStateTransition>> transitions(
+            request.jobs.size()
+        );
+        std::mutex transition_mutex;
+
+        config.on_job_state_changed = [&](const JobStateTransition& change) {
+            std::lock_guard<std::mutex> lock(transition_mutex);
+            transitions.at(change.index).push_back(change);
+        };
+
         config.on_listening = [&](const net::TcpEndpoint& endpoint) {
             {
                 std::lock_guard<std::mutex> lock(mutex);
@@ -145,6 +156,34 @@ int main() {
         expect(
             distributed.summary.jobs_failed == request.jobs.size(),
             "all jobs must be terminal as failed"
+        );
+        expect(
+            stats.job_states.size() == request.jobs.size(),
+            "the coordinator must report a state for every job"
+        );
+
+        for (std::size_t i = 0; i < request.jobs.size(); ++i) {
+            expect(
+                stats.job_states[i] == JobState::failed,
+                "every distributed job must finish failed"
+            );
+            expect(
+                !transitions[i].empty(),
+                "every job must publish at least one transition"
+            );
+
+            const JobStateTransition& last = transitions[i].back();
+            expect(
+                last.to == JobState::failed,
+                "the last job transition must be failed"
+            );
+        }
+
+        expect(
+            transitions.back().size() == 1 &&
+                transitions.back()[0].from == JobState::pending &&
+                transitions.back()[0].to == JobState::failed,
+            "an undispatched job must move directly pending -> failed"
         );
 
         for (std::size_t i = 0; i < distributed.results.size(); ++i) {

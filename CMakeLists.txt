@@ -76,6 +76,7 @@ add_library(backtester_core
     # Coordinator scheduling and aggregation
     src/coordinator/coordinator.cpp
     src/coordinator/job_queue.cpp
+    src/coordinator/job_state.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -194,6 +195,7 @@ add_backtester_test(protocol_tests protocol/protocol_test.cpp)
 
 # Coordinator scheduling
 add_backtester_test(job_queue_tests coordinator/job_queue_test.cpp)
+add_backtester_test(job_state_tests coordinator/job_state_test.cpp)
 
 # Worker loop, job execution, and development transport
 add_backtester_test(

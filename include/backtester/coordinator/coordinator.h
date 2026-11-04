@@ -1,5 +1,6 @@
 #pragma once
 
+#include "coordinator/job_state.h"
 #include "experiment/experiment.h"
 #include "net/tcp.h"
 
@@ -7,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 // Coordinator half of the distributed split.
 //
@@ -18,6 +20,11 @@
 // replies with exactly one backtest_result. When the queue is empty the
 // coordinator sends shutdown to every worker and aggregates the results into the
 // same ExperimentResult that a local run produces.
+//
+// The coordinator owns the authoritative job state table: jobs start pending
+// in its queue, move to running when a worker takes them, and end completed or
+// failed. Workers never publish state directly; their replies are interpreted
+// by the coordinator.
 
 struct CoordinatorConfig {
     // Bind address. An empty host listens on all interfaces. Port 0 asks the
@@ -38,6 +45,12 @@ struct CoordinatorConfig {
     // Optional diagnostics sink. The coordinator never writes protocol data
     // here; the CLI points it at stderr.
     std::function<void(const std::string&)> log;
+
+    // Called by the coordinator whenever a job changes state. The coordinator
+    // owns the state table; workers only report results. Calls from multiple
+    // worker threads are serialized by the coordinator, but the callback may
+    // run on a worker thread.
+    std::function<void(const JobStateTransition&)> on_job_state_changed;
 };
 
 struct CoordinatorStats {
@@ -46,6 +59,10 @@ struct CoordinatorStats {
     std::size_t results_received = 0;
     std::size_t worker_errors = 0;
     std::size_t transport_failures = 0;
+
+    // Final coordinator-owned state for every job, in request order. Once
+    // run_distributed_experiment() returns, every entry is completed or failed.
+    std::vector<JobState> job_states;
 };
 
 // Binds, accepts workers, dispatches every job in `request`, shuts the workers
