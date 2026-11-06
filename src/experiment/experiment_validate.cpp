@@ -1,5 +1,8 @@
 #include "experiment_internal.h"
 
+#include "core/date.h"
+#include "core/identifier.h"
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -22,88 +25,6 @@ using experiment_detail::validate_strategy_parameters;
 // Semantic validation helpers
 // -------------------------------------------------------------------
 
-bool is_ascii_alphanumeric(char c) {
-    return (c >= 'a' && c <= 'z') ||
-           (c >= 'A' && c <= 'Z') ||
-           (c >= '0' && c <= '9');
-}
-
-// URL-safe identifier used for strategy IDs: starts alphanumeric, then
-// alphanumerics, underscores, or hyphens.
-bool is_identifier(const std::string& value) {
-    if (value.empty() || !is_ascii_alphanumeric(value.front())) {
-        return false;
-    }
-
-    return std::all_of(
-        value.begin(),
-        value.end(),
-        [](char c) {
-            return is_ascii_alphanumeric(c) || c == '_' || c == '-';
-        }
-    );
-}
-
-// Experiment IDs additionally allow dots (for versions such as "sweep.v2").
-bool is_experiment_id(const std::string& value) {
-    if (value.empty() || !is_ascii_alphanumeric(value.front())) {
-        return false;
-    }
-
-    return std::all_of(
-        value.begin(),
-        value.end(),
-        [](char c) {
-            return is_ascii_alphanumeric(c) ||
-                   c == '_' || c == '-' || c == '.';
-        }
-    );
-}
-
-bool is_leap_year(int year) {
-    return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
-}
-
-bool valid_date(const std::string& value) {
-    if (value.size() != 10 ||
-        value[4] != '-' ||
-        value[7] != '-') {
-        return false;
-    }
-
-    for (std::size_t i = 0; i < value.size(); ++i) {
-        if (i == 4 || i == 7) {
-            continue;
-        }
-        if (value[i] < '0' || value[i] > '9') {
-            return false;
-        }
-    }
-
-    const int year =
-        std::stoi(value.substr(0, 4));
-    const int month =
-        std::stoi(value.substr(5, 2));
-    const int day =
-        std::stoi(value.substr(8, 2));
-
-    if (month < 1 || month > 12) {
-        return false;
-    }
-
-    static const int kDaysPerMonth[] = {
-        31, 28, 31, 30, 31, 30,
-        31, 31, 30, 31, 30, 31
-    };
-
-    int max_day = kDaysPerMonth[month - 1];
-    if (month == 2 && is_leap_year(year)) {
-        max_day = 29;
-    }
-
-    return day >= 1 && day <= max_day;
-}
-
 void validate_identifier(
     const std::string& value,
     const std::string& path,
@@ -111,7 +32,7 @@ void validate_identifier(
     const std::string& description
 ) {
     const bool valid = allow_dots
-        ? is_experiment_id(value)
+        ? is_dotted_identifier(value)
         : is_identifier(value);
 
     if (!valid) {
@@ -245,14 +166,14 @@ void finalize_experiment(ExperimentRequest& request) {
         );
     }
 
-    if (!valid_date(request.data.start_date)) {
+    if (!is_valid_iso_date(request.data.start_date)) {
         fail(
             child_path(child_path(kRootPath, "data"), "start_date"),
             "Expected a date in YYYY-MM-DD format"
         );
     }
 
-    if (!valid_date(request.data.end_date)) {
+    if (!is_valid_iso_date(request.data.end_date)) {
         fail(
             child_path(child_path(kRootPath, "data"), "end_date"),
             "Expected a date in YYYY-MM-DD format"

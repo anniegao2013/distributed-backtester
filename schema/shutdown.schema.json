@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/backtester-shutdown.schema.json",
+  "title": "Distributed Backtester Shutdown",
+  "description": "Coordinator-to-worker control message. Asks the worker to finish the current job, if any, and stop. No reply is defined; the coordinator observes the connection closing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "message_id"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this schema, for editor support."
+    },
+    "protocol_version": {
+      "const": 1,
+      "description": "Wire protocol version. Only version 1 is supported."
+    },
+    "type": {
+      "const": "shutdown"
+    },
+    "message_id": {
+      "$ref": "#/$defs/messageId",
+      "description": "Correlation key chosen by the coordinator, recorded in worker logs."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional human-readable explanation, for logs and diagnostics."
+    }
+  },
+  "$defs": {
+    "messageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    }
+  }
+}

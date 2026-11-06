@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/backtester-backtest-job.schema.json",
+  "title": "Distributed Backtester Backtest Job",
+  "description": "Coordinator-to-worker request. One message carries one fully-expanded backtest. The worker resolves data.path in its own environment.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["protocol_version", "type", "message_id", "job"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional reference to this schema, for editor support."
+    },
+    "protocol_version": {
+      "const": 1,
+      "description": "Wire protocol version. Only version 1 is supported."
+    },
+    "type": {
+      "const": "backtest_job"
+    },
+    "message_id": {
+      "$ref": "#/$defs/messageId",
+      "description": "Correlation key chosen by the coordinator. Echoed in the reply."
+    },
+    "job": {
+      "$ref": "#/$defs/job"
+    }
+  },
+  "$defs": {
+    "messageId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+    },
+    "jobId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]*$"
+    },
+    "experimentId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "date": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "parameters": {
+      "type": "object",
+      "minProperties": 1,
+      "description": "One concrete parameter combination. Names and ranges are validated by the worker against the strategy registry.",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "asset", "start_date", "end_date"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "OHLCV CSV path, resolved in the worker's environment."
+        },
+        "asset": {
+          "type": "string",
+          "minLength": 1
+        },
+        "start_date": {
+          "$ref": "#/$defs/date",
+          "description": "First bar included in the backtest. Earlier bars remain visible as warm-up."
+        },
+        "end_date": {
+          "$ref": "#/$defs/date",
+          "description": "Last bar included in the backtest. Must not precede start_date."
+        }
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Execution settings for this job. Omitted fields use the defaults shown. Concurrency is a coordinator concern and is not part of a job.",
+      "properties": {
+        "initial_cash": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "default": 10000.0
+        },
+        "transaction_cost_rate": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0.0,
+          "description": "Commission as a fraction of traded notional (0.001 = 10 bps)."
+        },
+        "slippage_rate": {
+          "type": "number",
+          "minimum": 0,
+          "exclusiveMaximum": 1,
+          "default": 0.0,
+          "description": "Adverse price movement per fill as a fraction of the bar open (0.0005 = 5 bps)."
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include_trades": {
+          "type": "boolean",
+          "default": false,
+          "description": "Ask the worker to return every filled trade in the result."
+        }
+      }
+    },
+    "job": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "experiment_id",
+        "job_id",
+        "strategy_id",
+        "strategy_type",
+        "parameters",
+        "data"
+      ],
+      "properties": {
+        "experiment_id": {
+          "$ref": "#/$defs/experimentId",
+          "description": "Experiment that produced this job, echoed in the result."
+        },
+        "job_id": {
+          "$ref": "#/$defs/jobId",
+          "description": "Deterministic job ID such as 'ma-1'."
+        },
+        "strategy_id": {
+          "$ref": "#/$defs/jobId"
+        },
+        "strategy_type": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "description": "Strategy registry name, for example 'moving_average_crossover'."
+        },
+        "parameters": {
+          "$ref": "#/$defs/parameters"
+        },
+        "data": {
+          "$ref": "#/$defs/data"
+        },
+        "execution": {
+          "$ref": "#/$defs/execution"
+        },
+        "output": {
+          "$ref": "#/$defs/output"
+        }
+      }
+    }
+  }
+}

@@ -212,6 +212,14 @@ void validate_strategy_parameters(
 
 }  // namespace experiment_detail
 
+void validate_strategy_parameters(
+    const std::string& type,
+    const ParameterMap& parameters,
+    const std::string& path
+) {
+    experiment_detail::validate_strategy_parameters(type, parameters, path);
+}
+
 std::unique_ptr<Strategy> create_strategy(
     const std::string& type,
     const ParameterMap& parameters

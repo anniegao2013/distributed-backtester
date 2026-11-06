@@ -1,0 +1,24 @@
+{
+  "$schema": "../../schema/backtest_result.schema.json",
+  "protocol_version": 1,
+  "type": "backtest_result",
+  "message_id": "crossover-sweep:crossover-2:0001",
+  "worker_id": "worker-a",
+  "result": {
+    "experiment_id": "crossover-sweep",
+    "job_id": "crossover-2",
+    "strategy_id": "crossover",
+    "strategy_type": "moving_average_crossover",
+    "parameters": {
+      "short_window": 50,
+      "long_window": 20
+    },
+    "status": "invalid",
+    "duration_seconds": 0.0,
+    "error": {
+      "type": "validation_error",
+      "path": "$.job.parameters.short_window",
+      "message": "short_window must be less than long_window"
+    }
+  }
+}

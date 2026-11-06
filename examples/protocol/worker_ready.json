@@ -1,0 +1,7 @@
+{
+  "$schema": "../../schema/worker_ready.schema.json",
+  "protocol_version": 1,
+  "type": "worker_ready",
+  "message_id": "worker-a:ready:0001",
+  "worker_id": "worker-a"
+}

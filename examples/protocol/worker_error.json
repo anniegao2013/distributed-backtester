@@ -1,0 +1,12 @@
+{
+  "$schema": "../../schema/worker_error.schema.json",
+  "protocol_version": 1,
+  "type": "worker_error",
+  "message_id": "crossover-sweep:crossover-1:0001",
+  "worker_id": "worker-a",
+  "error": {
+    "type": "execution_error",
+    "path": "$.job.data.path",
+    "message": "Could not read market data file"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../../schema/shutdown.schema.json",
+  "protocol_version": 1,
+  "type": "shutdown",
+  "message_id": "crossover-sweep:shutdown:0001",
+  "reason": "experiment run complete"
+}

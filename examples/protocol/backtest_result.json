@@ -1,0 +1,44 @@
+{
+  "$schema": "../../schema/backtest_result.schema.json",
+  "protocol_version": 1,
+  "type": "backtest_result",
+  "message_id": "crossover-sweep:crossover-1:0001",
+  "worker_id": "worker-a",
+  "result": {
+    "experiment_id": "crossover-sweep",
+    "job_id": "crossover-1",
+    "strategy_id": "crossover",
+    "strategy_type": "moving_average_crossover",
+    "parameters": {
+      "short_window": 20,
+      "long_window": 100
+    },
+    "status": "completed",
+    "duration_seconds": 0.022002458,
+    "metrics": {
+      "total_return": 0.124137104031776,
+      "sharpe_ratio": 0.151469361496076,
+      "max_drawdown": 0.291707235678579,
+      "number_of_trades": 18,
+      "total_costs": 483.991719159033
+    },
+    "trades": [
+      {
+        "symbol": "SP500",
+        "side": "buy",
+        "quantity": 4.129488,
+        "fill_price": 1467.1089,
+        "commission": 6.058531,
+        "slippage_cost": 3.029266
+      },
+      {
+        "symbol": "SP500",
+        "side": "sell",
+        "quantity": 4.129488,
+        "fill_price": 1523.2425,
+        "commission": 6.290337,
+        "slippage_cost": 3.145168
+      }
+    ]
+  }
+}

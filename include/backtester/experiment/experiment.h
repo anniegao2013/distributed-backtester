@@ -137,6 +137,16 @@ ExperimentRequest load_experiment_file(const std::string& path);
 // Throws ExperimentValidationError.
 void finalize_experiment(ExperimentRequest& request);
 
+// Validates that `type` is registered and that `parameters` is exactly the
+// parameter set it requires, with every value in range. Throws
+// ExperimentValidationError with a path rooted at `path` (by default "$").
+// Shared by experiment expansion and worker-side job validation.
+void validate_strategy_parameters(
+    const std::string& type,
+    const ParameterMap& parameters,
+    const std::string& path = "$"
+);
+
 // Constructs a strategy from its schema type name and validated parameters.
 // Throws std::invalid_argument for an unknown type.
 std::unique_ptr<Strategy> create_strategy(
@@ -161,6 +171,21 @@ using ExperimentProgressCallback = std::function<void(
 ExperimentResult run_experiment(
     const ExperimentRequest& request,
     const ExperimentProgressCallback& on_started = {}
+);
+
+// Aggregates terminal job outcomes into the result document shared by local and
+// distributed runs. Both execution paths report through
+// ExperimentResultCollector, so this function never needs to know where a job
+// ran. `outcomes` must be in request-job order and contain exactly one completed
+// or failed outcome per job. `cpu_seconds` is the coordinator/process CPU time,
+// not the sum of worker CPU time.
+ExperimentResult build_experiment_result(
+    const ExperimentRequest& request,
+    const ExperimentDataSummary& data_summary,
+    std::vector<ExperimentJobOutcome> outcomes,
+    double wall_seconds,
+    double cpu_seconds,
+    std::size_t max_concurrent
 );
 
 // Serializes a completed (or partially completed) experiment run.
