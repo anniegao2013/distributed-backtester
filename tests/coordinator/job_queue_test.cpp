@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -143,6 +144,72 @@ void test_push_after_close_is_rejected() {
     expect(queue.empty(), "a rejected push must not add a job");
 }
 
+void test_pop_for_times_out() {
+    JobQueue queue;
+
+    const auto start = std::chrono::steady_clock::now();
+    const std::optional<QueuedJob> job =
+        queue.pop_for(std::chrono::milliseconds(40));
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start
+    );
+
+    expect(!job.has_value(), "pop_for must return nullopt on timeout");
+    expect(!queue.closed(), "a timeout must not close the queue");
+    expect(
+        elapsed.count() >= 30,
+        "pop_for must wait for approximately its timeout"
+    );
+}
+
+void test_pop_for_wakes_for_a_job() {
+    JobQueue queue;
+
+    std::thread producer([&] {
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        queue.push(make_job(9));
+    });
+
+    const std::optional<QueuedJob> job =
+        queue.pop_for(std::chrono::seconds(2));
+
+    producer.join();
+
+    expect(job.has_value(), "pop_for must wake when a job arrives");
+    expect(job->index == 9, "pop_for must return the arriving job");
+
+    queue.close();
+}
+
+void test_requeue_front_returns_work() {
+    JobQueue queue;
+
+    queue.push(make_job(0));
+    queue.push(make_job(1));
+    queue.close();
+
+    const std::optional<QueuedJob> first = queue.pop();
+    expect(first.has_value(), "the queue must yield its first job");
+    expect(first->index == 0, "the first pop must be FIFO");
+
+    // A claimed job that could not be delivered goes back to the front, even
+    // after the queue has been closed for new work.
+    queue.requeue_front(std::move(*first));
+
+    const std::optional<QueuedJob> again = queue.pop();
+    expect(again.has_value(), "the requeued job must be available");
+    expect(again->index == 0, "the requeued job must stay at the front");
+
+    const std::optional<QueuedJob> next = queue.pop();
+    expect(next.has_value(), "the original second job must remain");
+    expect(next->index == 1, "requeueing must not reorder other jobs");
+
+    expect(
+        !queue.pop().has_value(),
+        "the queue must be empty after the requeued work is consumed"
+    );
+}
+
 void test_concurrent_distribution() {
     constexpr std::size_t kJobCount = 200;
     constexpr std::size_t kConsumerCount = 8;
@@ -217,6 +284,9 @@ int main() {
         test_fifo_order();
         test_pop_blocks_until_push();
         test_close_wakes_blocked_pop();
+        test_pop_for_times_out();
+        test_pop_for_wakes_for_a_job();
+        test_requeue_front_returns_work();
         test_push_after_close_is_rejected();
         test_concurrent_distribution();
 

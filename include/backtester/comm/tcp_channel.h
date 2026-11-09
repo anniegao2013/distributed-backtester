@@ -24,6 +24,10 @@ public:
 
     bool connected() const noexcept;
 
+    // Non-blocking liveness check. Returns true when the peer has closed or
+    // reset the connection, or when the socket is no longer usable.
+    bool peer_closed() const noexcept;
+
     std::optional<std::string> receive() override;
     void send(const std::string& message) override;
     void close() override;

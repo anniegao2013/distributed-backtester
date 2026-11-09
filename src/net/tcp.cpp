@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstring>
 #include <netdb.h>
+#include <poll.h>
 #include <stdexcept>
 #include <string>
 #include <sys/socket.h>
@@ -314,6 +315,56 @@ std::optional<std::string> TcpSocket::receive_frame() {
     }
 
     return payload;
+}
+
+bool TcpSocket::peer_closed() const noexcept {
+    if (!valid()) {
+        return true;
+    }
+
+    pollfd descriptor{};
+    descriptor.fd = descriptor_;
+    descriptor.events = POLLIN;
+
+    int ready = 0;
+
+    do {
+        ready = ::poll(&descriptor, 1, 0);
+    } while (ready < 0 && errno == EINTR);
+
+    if (ready < 0) {
+        // Without a usable descriptor there is no way to receive a reply.
+        return true;
+    }
+
+    if (ready == 0) {
+        return false;
+    }
+
+    if ((descriptor.revents & (POLLIN | POLLHUP | POLLERR)) == 0) {
+        return (descriptor.revents & POLLNVAL) != 0;
+    }
+
+    // Peek so a readable socket is not mistaken for a close. A return value of
+    // zero is an orderly shutdown; a pending byte means data is waiting.
+    char byte = 0;
+    ssize_t peeked = 0;
+
+    do {
+        peeked = ::recv(descriptor_, &byte, 1, MSG_PEEK);
+    } while (peeked < 0 && errno == EINTR);
+
+    if (peeked == 0) {
+        return true;
+    }
+
+    if (peeked > 0) {
+        return false;
+    }
+
+    // EAGAIN means the peer is still connected even though poll was readable.
+    // Any other error (for example ECONNRESET) makes the connection unusable.
+    return errno != EAGAIN && errno != EWOULDBLOCK;
 }
 
 TcpListener::TcpListener(int descriptor) : descriptor_(descriptor) {}

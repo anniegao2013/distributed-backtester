@@ -228,6 +228,14 @@ add_backtester_test(
     integration/coordinator_failure_test.cpp
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+add_backtester_test(
+    coordinator_disconnect_test
+    integration/coordinator_disconnect_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# This test uses real sockets and would otherwise hang the suite forever if
+# disconnect detection regressed.
+set_tests_properties(coordinator_disconnect_test PROPERTIES TIMEOUT 30)
 
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(

@@ -158,6 +158,14 @@ int main() {
             "all jobs must be terminal as failed"
         );
         expect(
+            stats.workers_disconnected == 1,
+            "the worker that disappeared must be detected"
+        );
+        expect(
+            stats.transport_failures == 1,
+            "the lost worker must be counted as one transport failure"
+        );
+        expect(
             stats.job_states.size() == request.jobs.size(),
             "the coordinator must report a state for every job"
         );

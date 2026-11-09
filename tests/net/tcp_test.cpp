@@ -1,5 +1,6 @@
 #include "net/tcp.h"
 
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -105,12 +106,54 @@ void test_large_frame_round_trip() {
     expect(saw_eof, "a clean close between frames must be reported as EOF");
 }
 
+void test_peer_closed_detection() {
+    net::TcpListener listener =
+        net::TcpListener::bind("127.0.0.1", 0, 1);
+    const std::uint16_t port = listener.port();
+
+    net::TcpSocket client = net::connect_to("127.0.0.1", port);
+    net::TcpSocket server = listener.accept();
+
+    expect(
+        !server.peer_closed(),
+        "a connected peer must not be reported as closed"
+    );
+
+    client.send_frame("ping");
+
+    expect(
+        !server.peer_closed(),
+        "pending data must not be mistaken for a closed peer"
+    );
+
+    const auto frame = server.receive_frame();
+    expect(frame.has_value() && *frame == "ping", "the frame must arrive");
+
+    client.close();
+
+    bool closed = false;
+
+    for (int attempt = 0; attempt < 100 && !closed; ++attempt) {
+        closed = server.peer_closed();
+
+        if (!closed) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+
+    expect(
+        closed,
+        "a peer close must be detected without a blocking read"
+    );
+}
+
 }  // namespace
 
 int main() {
     try {
         test_endpoint_parsing();
         test_large_frame_round_trip();
+        test_peer_closed_detection();
         std::cout << "tcp_tests passed\n";
         return 0;
     } catch (const std::exception& error) {

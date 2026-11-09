@@ -2,6 +2,7 @@
 
 #include "protocol/protocol.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -37,6 +38,18 @@ public:
     // Blocks until a job is available or the queue is closed. Returns the
     // oldest job, or std::nullopt once the queue is closed and empty.
     std::optional<QueuedJob> pop();
+
+    // Like pop(), but returns std::nullopt after `timeout` when no job has
+    // arrived yet. Callers can use the timeout to check worker liveness. A
+    // closed queue still returns queued jobs; check closed() to distinguish an
+    // empty closed queue from an ordinary timeout.
+    std::optional<QueuedJob> pop_for(std::chrono::milliseconds timeout);
+
+    // Puts a job back at the front of the queue. This is used when a job was
+    // claimed but could not be delivered, so it has not started running and
+    // must be offered to another worker. Unlike push(), this is allowed after
+    // close() because it returns existing work rather than adding new work.
+    void requeue_front(QueuedJob job);
 
     // Stops accepting new jobs and wakes every blocked pop(). Jobs already
     // queued remain available until they are popped.

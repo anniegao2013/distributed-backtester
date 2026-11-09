@@ -73,9 +73,11 @@ fully-expanded list of concrete backtests. The coordinator builds one
 Every job is appended to a thread-safe FIFO `JobQueue` in request order before
 any worker thread starts. The queue is then closed, so workers stop waiting once
 the last job has been handed out. Each worker thread acquires a concurrency
-permit and calls `pop()`, which blocks until the next job is available and always
-returns the oldest queued job. Distribution is therefore FIFO: the oldest queued
-job is claimed first even though several workers pop concurrently.
+permit and calls `pop_for()`, which waits until the next job is available and
+always returns the oldest queued job. The timeout only lets an idle thread check
+whether its worker is still connected; a job always wins the wait. Distribution
+is therefore FIFO: the oldest queued job is claimed first even though several
+workers pop concurrently.
 
 The number of permits is:
 
@@ -100,18 +102,52 @@ results; they never publish or persist state themselves.
 | `completed` | A successful result was received. |
 | `failed` | Execution, transport, or result processing failed. |
 
-A job moves `pending -> running` when a coordinator worker thread takes it from
-the queue. It then moves to `completed` or `failed` when that job reaches a
-terminal outcome. `completed` requires a successful result; a worker-reported
-`failed`/`invalid` result, a `worker_error`, or a transport/protocol failure ends
-as `failed`. Jobs still queued after every worker has stopped move directly
-`pending -> failed` as `job was not dispatched to a worker`. Terminal states are
-final.
+A job moves `pending -> running` once it has been handed to a worker. If a
+worker is already gone when the coordinator tries to send the job, the job stays
+`pending` and returns to the queue. A running job moves to `completed` or
+`failed` when it reaches a terminal outcome. `completed` requires a successful
+result; a worker-reported `failed`/`invalid` result, a `worker_error`, or a
+transport/protocol failure ends as `failed`. Jobs still queued after every
+worker has stopped move directly `pending -> failed` as `job was not dispatched
+to a worker`. Terminal states are final.
 
 Progress observers can set `CoordinatorConfig::on_job_state_changed`. Callbacks
 are serialized by the coordinator, though they may run on a worker thread.
 `CoordinatorStats::job_states` contains the final state of every job in request
 order after `run_distributed_experiment()` returns.
+
+## Worker liveness
+
+The coordinator detects lost workers instead of waiting for a reply that will
+never arrive. Detection has three paths:
+
+- **Idle close.** Each worker thread checks `peer_closed()` before waiting for a
+  job and every 100 ms while idle, so a crashed worker is removed even when no
+  work is in flight. This also prevents a coordinator hang when every worker
+  disappears with jobs still queued.
+- **Pre-dispatch close.** A liveness check between claiming a job and sending it
+  returns the job to the front of the FIFO queue. The job is still `pending`,
+  so a healthy worker can run it.
+- **Mid-job loss.** A close, reset, or malformed/partial reply while a result is
+  expected marks the in-flight job failed, removes the worker, and makes the
+  remaining queue available to healthy workers.
+
+A failed `send()` means the job never reached the worker, so it is requeued
+rather than failed. The coordinator cannot distinguish a job that ran but whose
+reply was lost from one that never ran, so version 1 does not retry an in-flight
+job.
+
+Every loss increments `CoordinatorStats::workers_disconnected` and
+`transport_failures`, is logged, and emits
+`CoordinatorConfig::on_worker_disconnected`. The event carries the worker ID,
+a human-readable reason, the in-flight `job_id` if there was one, and whether
+that job was marked failed. Lost workers are skipped during shutdown so the same
+failure is not reported twice.
+
+This detects process crashes and transport failures that close or reset the
+socket. It is not a heartbeat: a worker process that is alive but hangs, or a
+network partition that leaves the socket open, is not detected in version 1.
+Job timeouts and OS keepalive tuning are separate concerns.
 
 ## Failure handling
 
@@ -120,7 +156,9 @@ order after `run_distributed_experiment()` returns.
 | Worker returns `completed` | `ExperimentJobOutcome::ok = true`, metrics and optional trades copied |
 | Worker returns `invalid` or `failed` | `ok = false`; the result error message is kept |
 | Worker returns `worker_error` | `ok = false`; the error message is kept and `worker_errors` increments |
-| Worker closes the connection or a reply cannot be parsed | Current job is marked failed; that worker stops pulling jobs, and the remaining queue stays available to other workers |
+| Worker closes while idle | Worker is removed; no job fails and queued work stays available |
+| Worker closes before a job is sent | Job returns to the front of the queue; worker is removed |
+| Worker closes while running a job, or a reply cannot be parsed | Current job is marked failed; that worker stops pulling jobs, and the remaining queue stays available to other workers |
 | Every worker fails before finishing the queue | Unassigned jobs remain failed with `job was not dispatched to a worker` |
 
 Per-job strategy and data failures do not abort the run. Startup problems, such
@@ -179,19 +217,24 @@ config.log = [](const std::string& line) { /* stderr */ };
 config.on_job_state_changed = [](const JobStateTransition& change) {
     // change.index, change.job_id, change.from, change.to
 };
+config.on_worker_disconnected = [](const WorkerDisconnectEvent& event) {
+    // event.worker_id, event.reason, event.job_id, event.job_failed
+};
 
 CoordinatorStats stats;
 const ExperimentResult result =
     run_distributed_experiment(request, config, &stats);
 
 // stats.job_states holds the final state per request job.
+// stats.workers_disconnected counts workers lost during the run.
 ```
 
 `run_distributed_experiment()` blocks for the whole run. `on_listening` fires
 after the listening socket is bound and before the first accept, which is
 useful for tests that bind port `0` and need the actual port. `CoordinatorStats`
 reports registered workers, dispatched jobs, received results, worker errors,
-transport failures, and the final coordinator-owned job state table.
+transport failures, lost workers, and the final coordinator-owned job state
+table.
 
 ## Limitations
 

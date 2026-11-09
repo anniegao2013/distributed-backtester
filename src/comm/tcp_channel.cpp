@@ -15,6 +15,10 @@ bool TcpChannel::connected() const noexcept {
     return socket_.valid();
 }
 
+bool TcpChannel::peer_closed() const noexcept {
+    return socket_.peer_closed();
+}
+
 std::optional<std::string> TcpChannel::receive() {
     if (!socket_.valid()) {
         throw std::runtime_error(

@@ -388,10 +388,18 @@ The transport owns concerns that are deliberately not in the message:
 - bounded in-flight jobs and dynamic assignment to available workers;
 - logging and metrics around network and execution time.
 
+The coordinator treats a closed or reset connection as a lost worker. It stops
+scheduling that worker, returns undelivered work to the queue, fails the job that
+was in flight if there was one, and continues with the remaining workers. This
+detects process crashes and disconnects; the protocol has no heartbeat, so a
+worker that stays connected but stops responding is not detected without a job
+timeout.
+
 Not yet implemented in version 1:
 
-- timeouts, automatic retry, and duplicate suppression by `message_id`;
+- job timeouts, automatic retry, and duplicate suppression by `message_id`;
 - reconnection after a worker drops;
+- heartbeat-based liveness for a connected but unresponsive worker;
 - authentication and encryption.
 
 ## C++ usage

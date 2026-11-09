@@ -27,6 +27,10 @@ namespace {
 
 constexpr std::size_t kMaxIdentifierLength = 128;
 
+// How often an idle worker thread wakes up to check whether its connection is
+// still alive. This bounds crash detection latency while the queue is empty.
+constexpr std::chrono::milliseconds kWorkerLivenessPollInterval{100};
+
 // Serializes log lines so concurrent worker threads cannot interleave them.
 class Logger {
 public:
@@ -66,6 +70,32 @@ public:
             // Observers are read-only: a throwing callback must not be able to
             // leave the coordinator's state table inconsistent or kill a
             // worker thread. The transition is already committed.
+        }
+    }
+
+private:
+    const CoordinatorConfig& config_;
+    std::mutex mutex_;
+};
+
+// Serializes disconnect notifications from concurrent worker threads.
+class WorkerDisconnectObserver {
+public:
+    explicit WorkerDisconnectObserver(const CoordinatorConfig& config)
+        : config_(config) {}
+
+    void publish(const WorkerDisconnectEvent& event) noexcept {
+        if (!config_.on_worker_disconnected) {
+            return;
+        }
+
+        try {
+            std::lock_guard<std::mutex> lock(mutex_);
+            config_.on_worker_disconnected(event);
+        } catch (...) {
+            // The worker has already been removed from scheduling and the
+            // event is recorded in the stats. An observer must not be able to
+            // interrupt the remaining run.
         }
     }
 
@@ -224,6 +254,10 @@ ExperimentJobOutcome result_to_outcome(
 struct WorkerConnection {
     comm::TcpChannel channel;
     std::string worker_id;
+
+    // Set by the worker's own thread when the connection is lost. Read by the
+    // main thread only after every worker thread has joined.
+    bool lost = false;
 };
 
 struct SharedState {
@@ -231,6 +265,7 @@ struct SharedState {
     std::atomic<std::size_t> results_received{0};
     std::atomic<std::size_t> worker_errors{0};
     std::atomic<std::size_t> transport_failures{0};
+    std::atomic<std::size_t> workers_disconnected{0};
 };
 
 // Bounds the number of jobs in flight independently of the number of
@@ -259,20 +294,25 @@ private:
     std::size_t available_;
 };
 
-ExperimentJobOutcome dispatch_one(
+void send_job(
     WorkerConnection& worker,
     const BacktestJobMessage& job,
     SharedState& shared
 ) {
     worker.channel.send(backtest_job_to_json(job, /*pretty=*/false));
     shared.jobs_dispatched.fetch_add(1);
+}
 
+ExperimentJobOutcome receive_result(
+    WorkerConnection& worker,
+    const BacktestJobMessage& job,
+    SharedState& shared
+) {
     const std::optional<std::string> reply = worker.channel.receive();
 
     if (!reply) {
         throw std::runtime_error(
-            "Worker '" + worker.worker_id +
-            "' closed the connection while running job " + job.job.job_id
+            "connection closed before a result was received"
         );
     }
 
@@ -329,11 +369,46 @@ ExperimentJobOutcome dispatch_one(
     );
 }
 
+// Records a lost worker exactly once and notifies observers. The worker is
+// removed from scheduling by returning from its loop; any in-flight job has
+// already been failed and any undispatched job has already been requeued.
+void report_worker_lost(
+    WorkerConnection& worker,
+    const std::string& reason,
+    const std::string& job_id,
+    bool job_failed,
+    SharedState& shared,
+    WorkerDisconnectObserver& disconnect_observer,
+    Logger& logger
+) {
+    if (worker.lost) {
+        return;
+    }
+
+    worker.lost = true;
+    shared.workers_disconnected.fetch_add(1);
+    shared.transport_failures.fetch_add(1);
+
+    logger.log(
+        "worker '" + worker.worker_id + "' disconnected: " + reason
+    );
+
+    disconnect_observer.publish(
+        WorkerDisconnectEvent{
+            worker.worker_id,
+            reason,
+            job_id,
+            job_failed
+        }
+    );
+}
+
 void worker_loop(
     WorkerConnection& worker,
     JobQueue& queue,
     JobStateTracker& states,
     JobStateObserver& state_observer,
+    WorkerDisconnectObserver& disconnect_observer,
     ExperimentResultCollector& results,
     SharedState& shared,
     JobGate& gate,
@@ -342,30 +417,86 @@ void worker_loop(
     for (;;) {
         gate.acquire();
 
-        std::optional<QueuedJob> queued = queue.pop();
+        // A worker that dies while idle closes its socket, but the coordinator
+        // is not reading from it. Check liveness before waiting so the loss is
+        // noticed immediately instead of when the next job is assigned.
+        if (worker.channel.peer_closed()) {
+            gate.release();
+            report_worker_lost(
+                worker,
+                "connection closed while waiting for work",
+                "",
+                false,
+                shared,
+                disconnect_observer,
+                logger
+            );
+            return;
+        }
 
-        // A nullopt means the queue is closed and empty: every job has
-        // already been handed to a worker.
+        std::optional<QueuedJob> queued =
+            queue.pop_for(kWorkerLivenessPollInterval);
+
         if (!queued) {
             gate.release();
+
+            // Closed and empty means every job has been handed out. Otherwise
+            // the wait timed out and the next iteration re-checks the worker.
+            if (queue.closed()) {
+                return;
+            }
+
+            continue;
+        }
+
+        // The worker may have dropped between the check above and the pop.
+        if (worker.channel.peer_closed()) {
+            queue.requeue_front(std::move(*queued));
+            gate.release();
+            report_worker_lost(
+                worker,
+                "connection closed before a job could be assigned",
+                "",
+                false,
+                shared,
+                disconnect_observer,
+                logger
+            );
             return;
         }
 
         const std::size_t index = queued->index;
         const BacktestJobMessage& job = queued->message;
 
-        // The coordinator transitions the job before handing it to the
-        // worker, so "running" means assigned to a specific worker.
-        state_observer.publish(states.mark_running(index));
+        try {
+            send_job(worker, job, shared);
+        } catch (const std::exception& error) {
+            // The job never reached the worker, so it is still pending and can
+            // be offered to a healthy worker.
+            queue.requeue_front(std::move(*queued));
+            gate.release();
+            report_worker_lost(
+                worker,
+                "could not assign work: " + std::string(error.what()),
+                "",
+                false,
+                shared,
+                disconnect_observer,
+                logger
+            );
+            return;
+        }
 
+        // The job is running only once it has been handed to the worker.
         logger.log(
             "assigning job '" + job.job.job_id + "' to worker '" +
             worker.worker_id + "'"
         );
+        state_observer.publish(states.mark_running(index));
 
         try {
             ExperimentJobOutcome outcome =
-                dispatch_one(worker, job, shared);
+                receive_result(worker, job, shared);
             const bool completed = outcome.ok;
 
             logger.log(
@@ -384,21 +515,24 @@ void worker_loop(
             );
             gate.release();
         } catch (const std::exception& error) {
+            // The job was delivered but its reply is gone. Version 1 does not
+            // retry an in-flight job, so it ends as failed.
             results.record(
                 index,
                 failed_outcome(job.job, error.what())
             );
             state_observer.publish(states.mark_failed(index));
-            shared.transport_failures.fetch_add(1);
             gate.release();
-
-            logger.log(
-                "worker '" + worker.worker_id + "' stopped after job '" +
-                job.job.job_id + "': " + error.what()
+            report_worker_lost(
+                worker,
+                "lost while running job '" + job.job.job_id + "': " +
+                    error.what(),
+                job.job.job_id,
+                true,
+                shared,
+                disconnect_observer,
+                logger
             );
-
-            // The connection is no longer usable. Remaining jobs stay in the
-            // queue for the other workers.
             return;
         }
     }
@@ -544,6 +678,7 @@ ExperimentResult run_distributed_experiment(
     // pending -> running -> completed/failed lifecycle.
     JobStateTracker states(request.jobs);
     JobStateObserver state_observer(config);
+    WorkerDisconnectObserver disconnect_observer(config);
 
     ExperimentResultCollector results(request.jobs);
 
@@ -573,6 +708,7 @@ ExperimentResult run_distributed_experiment(
             std::ref(queue),
             std::ref(states),
             std::ref(state_observer),
+            std::ref(disconnect_observer),
             std::ref(results),
             std::ref(shared),
             std::ref(gate),
@@ -618,23 +754,35 @@ ExperimentResult run_distributed_experiment(
     std::vector<ExperimentJobOutcome> outcomes = results.take();
 
     for (std::size_t i = 0; i < workers.size(); ++i) {
-        ShutdownMessage shutdown;
-        shutdown.message_id =
-            make_shutdown_message_id(request.experiment_id, i);
-        shutdown.reason = "experiment run complete";
+        // A lost worker has already been logged and counted; do not report the
+        // same failure again while shutting down.
+        if (!workers[i].lost) {
+            ShutdownMessage shutdown;
+            shutdown.message_id =
+                make_shutdown_message_id(request.experiment_id, i);
+            shutdown.reason = "experiment run complete";
 
-        try {
-            workers[i].channel.send(
-                shutdown_to_json(shutdown, /*pretty=*/false)
-            );
-            logger.log(
-                "sent shutdown to worker '" + workers[i].worker_id + "'"
-            );
-        } catch (const std::exception& error) {
-            logger.log(
-                "could not send shutdown to worker '" +
-                workers[i].worker_id + "': " + error.what()
-            );
+            try {
+                workers[i].channel.send(
+                    shutdown_to_json(shutdown, /*pretty=*/false)
+                );
+                logger.log(
+                    "sent shutdown to worker '" + workers[i].worker_id + "'"
+                );
+            } catch (const std::exception& error) {
+                // The worker disappeared after its last result. It has no work
+                // left, but the loss is still real and worth recording.
+                report_worker_lost(
+                    workers[i],
+                    "could not send shutdown: " +
+                        std::string(error.what()),
+                    "",
+                    false,
+                    shared,
+                    disconnect_observer,
+                    logger
+                );
+            }
         }
 
         workers[i].channel.close();
@@ -649,6 +797,7 @@ ExperimentResult run_distributed_experiment(
         stats->results_received = shared.results_received.load();
         stats->worker_errors = shared.worker_errors.load();
         stats->transport_failures = shared.transport_failures.load();
+        stats->workers_disconnected = shared.workers_disconnected.load();
         stats->job_states = states.snapshot();
     }
 

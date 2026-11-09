@@ -155,10 +155,19 @@ Options parse_options(int argc, char* argv[]) {
     return options;
 }
 
-void print_result(const ExperimentResult& result, std::size_t workers) {
+void print_result(
+    const ExperimentResult& result,
+    const CoordinatorStats& stats
+) {
     std::cout << "Experiment: " << result.experiment_id << '\n';
     std::cout << "Status: " << result.status << '\n';
-    std::cout << "Workers: " << workers << '\n';
+    std::cout << "Workers: " << stats.workers_registered << '\n';
+
+    if (stats.workers_disconnected > 0) {
+        std::cout << "Workers disconnected: "
+                  << stats.workers_disconnected << '\n';
+    }
+
     std::cout << "Jobs completed: " << result.summary.jobs_completed
               << " of " << result.summary.jobs_total << '\n';
     std::cout << std::fixed << std::setprecision(4);
@@ -212,7 +221,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
 
-        print_result(result, stats.workers_registered);
+        print_result(result, stats);
         return 0;
     } catch (const ExperimentValidationError& error) {
         std::cerr << "Invalid experiment";

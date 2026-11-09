@@ -26,6 +26,16 @@
 // failed. Workers never publish state directly; their replies are interpreted
 // by the coordinator.
 
+// Emitted once when the coordinator detects that a worker connection is gone.
+// `job_id` is empty when the worker was lost before it was given work;
+// `job_failed` is true when an in-flight job had to be marked failed.
+struct WorkerDisconnectEvent {
+    std::string worker_id;
+    std::string reason;
+    std::string job_id;
+    bool job_failed = false;
+};
+
 struct CoordinatorConfig {
     // Bind address. An empty host listens on all interfaces. Port 0 asks the
     // operating system for an ephemeral port; on_listening reports the bound
@@ -51,6 +61,12 @@ struct CoordinatorConfig {
     // worker threads are serialized by the coordinator, but the callback may
     // run on a worker thread.
     std::function<void(const JobStateTransition&)> on_job_state_changed;
+
+    // Called once per worker whose connection is lost during the run. The
+    // callback may run on a worker thread and is serialized by the
+    // coordinator. Throwing callbacks are suppressed after the loss is
+    // recorded, so they cannot interrupt shutdown or leave state inconsistent.
+    std::function<void(const WorkerDisconnectEvent&)> on_worker_disconnected;
 };
 
 struct CoordinatorStats {
@@ -59,6 +75,11 @@ struct CoordinatorStats {
     std::size_t results_received = 0;
     std::size_t worker_errors = 0;
     std::size_t transport_failures = 0;
+
+    // Workers whose connection was lost during the run. Such a worker is
+    // removed from scheduling; its in-flight job (if any) becomes failed and
+    // queued work is offered to the remaining workers.
+    std::size_t workers_disconnected = 0;
 
     // Final coordinator-owned state for every job, in request order. Once
     // run_distributed_experiment() returns, every entry is completed or failed.

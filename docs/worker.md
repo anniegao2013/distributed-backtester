@@ -15,6 +15,10 @@ Workers do not track job state. They report one result per job, and the
 coordinator is the single source of truth for whether that job is `running`,
 `completed`, or `failed`.
 
+A crashed or disconnected worker simply closes its TCP connection. The
+coordinator notices the closed socket, removes that worker from scheduling, and
+fails or requeues work according to whether a job had already been delivered.
+
 ## Lifecycle
 
 The worker connects, announces readiness, then performs the steps below for

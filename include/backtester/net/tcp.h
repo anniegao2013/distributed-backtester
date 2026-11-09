@@ -54,6 +54,11 @@ public:
     // closes mid-frame, the frame is empty, or the frame exceeds the limit.
     std::optional<std::string> receive_frame();
 
+    // Non-blocking liveness check. Returns true when the peer has closed or
+    // reset the connection, or when the socket is no longer usable. Pending
+    // unread data is not treated as a close. Never blocks.
+    bool peer_closed() const noexcept;
+
 private:
     int descriptor_ = -1;
 };
