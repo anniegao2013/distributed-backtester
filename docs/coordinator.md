@@ -61,6 +61,7 @@ Options:
 | `-n`, `--workers N` | `1` | Number of worker connections to accept before dispatch starts. |
 | `--max-attempts N` | `3` | Maximum dispatch attempts per job. `1` disables retries. |
 | `--no-retry-failed-results` | off | Do not retry `backtest_result` status `failed`. `worker_error` and transport failures remain retryable. |
+| `--state PATH` | off | Persist coordinator job state to `PATH` and resume from an existing checkpoint for the same experiment. |
 | `--json` | off | Write `experiment_result_to_json()` instead of the text summary. |
 
 The coordinator does not exit until it has accepted `--workers` connections.
@@ -139,6 +140,51 @@ are serialized by the coordinator, though they may run on a worker thread.
 order after `run_distributed_experiment()` returns. `job_attempts` holds the
 number of deliveries per job, and `job_retries` counts deliveries after the
 first across the whole run.
+
+## Persistence and recovery
+
+Persistence is opt-in. Pass `--state PATH` (or set
+`CoordinatorConfig::state_path`) to write one coordinator-local JSON file. The
+file is versioned (`state_version: 1`), identifies the experiment, and stores
+each job's identity (`job_id`, `strategy_id`, `strategy_type`, `parameters`),
+state, attempt count, and, once terminal, the full outcome including metrics and
+trades. Writes go to `PATH.tmp` and are renamed over `PATH`, so a crash cannot
+leave a half-written document in place.
+
+A relaunch pointed at the same file resumes the experiment:
+
+| Persisted state at load | Recovery action |
+| --- | --- |
+| `completed` or `failed` | Kept as terminal; its outcome is reused and the worker is not asked to run it again. |
+| `running` | Returned to `pending` and requeued. The previous process may have died after dispatch, so the result is unknown; the persisted attempt count still bounds retries. |
+| `pending` | Left pending and enqueued normally. |
+| No outcome and `attempts >= max_job_attempts` | Failed with `job was interrupted by a coordinator restart after N attempt(s); no attempts remain`. |
+
+Only pending jobs enter the FIFO queue. A resumed job's next delivery is
+`attempts + 1`, so its fresh `message_id` matches the attempt number. If every
+job is already terminal, the coordinator reloads the dataset for the result
+summary and returns the aggregated outcome immediately, without binding a
+listening socket or waiting for workers. This makes a completed run safe to
+relaunch with the same `--state` path.
+
+The file is validated before any socket is opened. A malformed document, an
+unsupported `state_version`, a different `experiment_id`, a job count or job
+identity mismatch, or a terminal state without an outcome raises
+`std::runtime_error`. Terminal outcomes are authoritative: if a snapshot
+contains both a terminal outcome and a lagging `running` state, the outcome
+wins. Persistence failures during the run are logged and counted in
+`CoordinatorStats::persistence_errors`; they do not abort the run or strand
+workers, though the on-disk checkpoint may be stale.
+
+Recovery statistics are reported separately: `state_recovered`,
+`jobs_recovered`, `jobs_requeued_after_restart`,
+`jobs_exhausted_after_restart`, and `persistence_errors`. The text summary adds
+`State recovered`, `Jobs requeued after restart`, `Jobs exhausted after
+restart`, and `State persistence errors` lines when they apply.
+
+`max_job_attempts` is a runtime policy. It is not stored in the file, so a
+relaunch with a lower limit can fail jobs whose persisted attempt count is
+already at or above the new limit.
 
 ## Worker liveness
 
@@ -261,6 +307,7 @@ config.listen_port = 9000;
 config.expected_workers = 4;
 config.max_job_attempts = 3;          // 1 disables retries
 config.retry_failed_results = true;   // "invalid" is never retried
+config.state_path = "run-state.json"; // empty disables persistence
 config.log = [](const std::string& line) { /* stderr */ };
 config.on_job_state_changed = [](const JobStateTransition& change) {
     // change.index, change.job_id, change.from, change.to
@@ -278,14 +325,18 @@ const ExperimentResult result =
 // stats.job_retries counts deliveries after the first across the run.
 // stats.duplicate_results counts ignored repeat submissions.
 // stats.workers_disconnected counts workers lost during the run.
+// stats.state_recovered, jobs_recovered,
+// stats.jobs_requeued_after_restart, jobs_exhausted_after_restart, and
+// stats.persistence_errors describe the state file and this restart.
 ```
 
 `run_distributed_experiment()` blocks for the whole run. `on_listening` fires
 after the listening socket is bound and before the first accept, which is
 useful for tests that bind port `0` and need the actual port. `CoordinatorStats`
 reports registered workers, dispatched jobs, received results, worker errors,
-transport failures, lost workers, retry counts, duplicate submissions, per-job
-attempt counts, and the final coordinator-owned job state table.
+transport failures, lost workers, retry counts, duplicate submissions, recovery
+and persistence counters, per-job attempt counts, and the final
+coordinator-owned job state table.
 
 `max_job_attempts` must be at least 1; an invalid policy is rejected with
 `std::invalid_argument` before the listening socket is bound.
@@ -293,6 +344,8 @@ attempt counts, and the final coordinator-owned job state table.
 ## Limitations
 
 - No authentication or encryption; use a trusted network or a tunnel.
+- Persistence is coordinator-local: the state file is not replicated, and two
+  coordinators must not share one path.
 - No job timeout or worker reconnection. Retries are bounded reassignments
   within the current run, not recovery of a permanently failed worker.
 - A job that is retried after a lost reply may run twice. Backtests are

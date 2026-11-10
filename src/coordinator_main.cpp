@@ -34,6 +34,8 @@ constexpr const char* kUsage =
     "                          Do not retry backtest_result status 'failed'.\n"
     "                          worker_error and transport failures are still\n"
     "                          retried while attempts remain.\n"
+    "      --state PATH        Persist job state to PATH and resume from an\n"
+    "                          existing checkpoint for this experiment.\n"
     "      --json              Emit the aggregated result as JSON.\n"
     "  -h, --help              Show this help.\n"
     "\n"
@@ -74,6 +76,7 @@ struct Options {
     bool json = false;
     bool retry_failed_results = true;
     std::string experiment_path;
+    std::string state_path;
     net::TcpEndpoint listen{"127.0.0.1", 9000};
     std::size_t workers = 1;
     std::size_t max_attempts = 3;
@@ -167,6 +170,20 @@ Options parse_options(int argc, char* argv[]) {
             }
 
             options.max_attempts = parse_attempt_count(argv[++i]);
+        } else if (argument == "--state") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    "--state requires a file path"
+                );
+            }
+
+            options.state_path = argv[++i];
+
+            if (options.state_path.empty()) {
+                throw std::invalid_argument(
+                    "--state requires a non-empty file path"
+                );
+            }
         } else if (argument == "-e" || argument == "--experiment") {
             if (i + 1 >= argc) {
                 throw std::invalid_argument(
@@ -230,6 +247,26 @@ void print_result(
                   << stats.duplicate_results << '\n';
     }
 
+    if (stats.state_recovered) {
+        std::cout << "State recovered: " << stats.jobs_recovered
+                  << " terminal job(s)\n";
+    }
+
+    if (stats.jobs_requeued_after_restart > 0) {
+        std::cout << "Jobs requeued after restart: "
+                  << stats.jobs_requeued_after_restart << '\n';
+    }
+
+    if (stats.jobs_exhausted_after_restart > 0) {
+        std::cout << "Jobs exhausted after restart: "
+                  << stats.jobs_exhausted_after_restart << '\n';
+    }
+
+    if (stats.persistence_errors > 0) {
+        std::cout << "State persistence errors: "
+                  << stats.persistence_errors << '\n';
+    }
+
     std::cout << "Jobs completed: " << result.summary.jobs_completed
               << " of " << result.summary.jobs_total << '\n';
     std::cout << std::fixed << std::setprecision(4);
@@ -272,6 +309,7 @@ int main(int argc, char* argv[]) {
         config.expected_workers = options.workers;
         config.max_job_attempts = options.max_attempts;
         config.retry_failed_results = options.retry_failed_results;
+        config.state_path = options.state_path;
         config.log = [](const std::string& message) {
             std::cerr << "[coordinator] " << message << '\n';
         };

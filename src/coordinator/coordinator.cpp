@@ -3,6 +3,7 @@
 #include "comm/tcp_channel.h"
 #include "coordinator/job_queue.h"
 #include "coordinator/job_state.h"
+#include "coordinator/persistent_state.h"
 #include "core/market_data.h"
 #include "experiment/result_collector.h"
 #include "protocol/protocol.h"
@@ -281,6 +282,7 @@ struct SharedState {
     std::atomic<std::size_t> workers_disconnected{0};
     std::atomic<std::size_t> job_retries{0};
     std::atomic<std::size_t> duplicate_results{0};
+    std::atomic<std::size_t> persistence_errors{0};
 };
 
 // Tracks the message_id of every attempt whose reply has been handled. The
@@ -312,6 +314,11 @@ class AttemptTracker {
 public:
     explicit AttemptTracker(std::size_t count) : attempts_(count, 0) {}
 
+    // Restores persisted attempt counts. `initial_attempts` must have one
+    // entry per job.
+    explicit AttemptTracker(std::vector<std::size_t> initial_attempts)
+        : attempts_(std::move(initial_attempts)) {}
+
     // Records a successful delivery and returns the new attempt number
     // (1 for the first attempt).
     std::size_t record_attempt(std::size_t index) {
@@ -332,6 +339,62 @@ public:
 private:
     mutable std::mutex mutex_;
     std::vector<std::size_t> attempts_;
+};
+
+// Serializes state-file writes and snapshots the coordinator's three state
+// views in a recovery-safe order: states, then attempts, then outcomes. A
+// terminal state is always committed after its outcome, so taking the outcomes
+// snapshot last means a terminal state never appears in the file without the
+// outcome that justifies it. If a state lags an outcome, load() prefers the
+// outcome.
+class StatePersister {
+public:
+    StatePersister(
+        CoordinatorStateStore* store,
+        const JobStateTracker& states,
+        const AttemptTracker& attempts,
+        const ExperimentResultCollector& results,
+        SharedState& shared,
+        Logger& logger
+    ) : store_(store),
+        states_(states),
+        attempts_(attempts),
+        results_(results),
+        shared_(shared),
+        logger_(logger) {}
+
+    void persist() {
+        if (store_ == nullptr) {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        try {
+            store_->save(
+                CoordinatorStateSnapshot{
+                    states_.snapshot(),
+                    attempts_.snapshot(),
+                    results_.snapshot()
+                }
+            );
+        } catch (const std::exception& error) {
+            shared_.persistence_errors.fetch_add(1);
+            logger_.log(
+                "could not persist coordinator state: " +
+                std::string(error.what())
+            );
+        }
+    }
+
+private:
+    CoordinatorStateStore* store_;
+    const JobStateTracker& states_;
+    const AttemptTracker& attempts_;
+    const ExperimentResultCollector& results_;
+    SharedState& shared_;
+    Logger& logger_;
+    std::mutex mutex_;
 };
 
 // Bounds the number of jobs in flight independently of the number of
@@ -584,6 +647,7 @@ void worker_loop(
     SharedState& shared,
     AttemptTracker& attempts,
     AttemptLedger& ledger,
+    StatePersister& persister,
     const CoordinatorConfig& config,
     JobGate& gate,
     Logger& logger
@@ -680,6 +744,7 @@ void worker_loop(
             std::to_string(config.max_job_attempts) + ")"
         );
         state_observer.publish(states.mark_running(index));
+        persister.persist();
 
         try {
             AttemptResult attempt =
@@ -712,6 +777,9 @@ void worker_loop(
                     state_observer,
                     logger
                 )) {
+                // The job is back in the queue with a higher attempt count.
+                // Persist that before another worker can claim it.
+                persister.persist();
                 gate.release();
                 continue;
             }
@@ -726,6 +794,7 @@ void worker_loop(
                         ? states.mark_completed(index)
                         : states.mark_failed(index)
                 );
+                persister.persist();
             } else {
                 shared.duplicate_results.fetch_add(1);
                 logger.log(
@@ -755,9 +824,12 @@ void worker_loop(
                         failed_outcome(queued->message.job, error.what())
                     )) {
                     state_observer.publish(states.mark_failed(index));
+                    persister.persist();
                 } else {
                     shared.duplicate_results.fetch_add(1);
                 }
+            } else {
+                persister.persist();
             }
 
             gate.release();
@@ -823,8 +895,162 @@ ExperimentResult run_distributed_experiment(
 
     Logger logger(config);
 
-    // Bind first so workers can start and connect while the coordinator is
-    // still preparing the run. Connections queue in the listen backlog.
+    // Durable state, when enabled, is loaded before any socket is opened so a
+    // malformed or mismatched file fails the run without leaving a listener
+    // behind.
+    std::optional<CoordinatorStateStore> state_store;
+    CoordinatorStateSnapshot snapshot;
+    CoordinatorRecovery recovery;
+
+    if (config.state_path.empty()) {
+        snapshot.states.assign(request.jobs.size(), JobState::pending);
+        snapshot.attempts.assign(request.jobs.size(), 0);
+        snapshot.outcomes.assign(request.jobs.size(), std::nullopt);
+    } else {
+        state_store.emplace(config.state_path, request);
+        logger.log("loading coordinator state from " + config.state_path);
+        recovery = state_store->load(snapshot);
+
+        if (recovery.recovered) {
+            logger.log(
+                "recovered " + std::to_string(recovery.jobs_completed) +
+                " completed and " + std::to_string(recovery.jobs_failed) +
+                " failed job(s); requeued " +
+                std::to_string(recovery.jobs_requeued) +
+                " interrupted job(s)"
+            );
+        }
+    }
+
+    // A job whose result was unknown when the previous coordinator stopped is
+    // back to pending. If its persisted attempt count already reached the
+    // policy limit, no worker may run it again, so fail it during recovery
+    // instead of queueing work that cannot be delivered.
+    std::size_t jobs_exhausted = 0;
+
+    for (std::size_t i = 0; i < request.jobs.size(); ++i) {
+        if (snapshot.outcomes[i] ||
+            snapshot.attempts[i] < config.max_job_attempts) {
+            continue;
+        }
+
+        const std::string reason =
+            "job was interrupted by a coordinator restart after " +
+            std::to_string(snapshot.attempts[i]) +
+            " attempt(s); no attempts remain";
+
+        snapshot.outcomes[i] = failed_outcome(request.jobs[i], reason);
+        snapshot.states[i] = JobState::failed;
+        ++jobs_exhausted;
+
+        logger.log("job '" + request.jobs[i].job_id + "' " + reason);
+    }
+
+    SharedState shared;
+
+    // The coordinator owns job state. Both local threads and remote workers
+    // report through the same collector, while the tracker records the
+    // pending -> running -> pending/completed/failed lifecycle.
+    JobStateTracker states(request.jobs, snapshot.states);
+    JobStateObserver state_observer(config);
+    WorkerDisconnectObserver disconnect_observer(config);
+    AttemptTracker attempts(snapshot.attempts);
+    AttemptLedger ledger;
+    ExperimentResultCollector results(request.jobs);
+
+    for (std::size_t i = 0; i < snapshot.outcomes.size(); ++i) {
+        if (snapshot.outcomes[i]) {
+            results.record(i, std::move(*snapshot.outcomes[i]));
+        }
+    }
+
+    StatePersister persister(
+        state_store ? &*state_store : nullptr,
+        states,
+        attempts,
+        results,
+        shared,
+        logger
+    );
+
+    // Write the normalized startup view (running -> pending, exhausted ->
+    // failed) before accepting any work.
+    persister.persist();
+
+    // The coordinator needs the same data summary a local run reports. The
+    // dataset is also the source of truth for the worker's date range.
+    logger.log("loading market data from " + request.data.path);
+
+    const std::vector<MarketBar> dataset =
+        load_market_data(request.data.path);
+
+    if (dataset.empty()) {
+        throw std::runtime_error(
+            "Market data file '" + request.data.path + "' is empty"
+        );
+    }
+
+    const ExperimentDataSummary data_summary{
+        dataset.size(),
+        dataset.front().date,
+        dataset.back().date
+    };
+
+    const std::size_t max_concurrent =
+        choose_max_concurrent(request, config.expected_workers);
+
+    auto publish_stats = [&](std::size_t workers_registered) {
+        if (stats == nullptr) {
+            return;
+        }
+
+        stats->workers_registered = workers_registered;
+        stats->jobs_dispatched = shared.jobs_dispatched.load();
+        stats->results_received = shared.results_received.load();
+        stats->worker_errors = shared.worker_errors.load();
+        stats->transport_failures = shared.transport_failures.load();
+        stats->workers_disconnected = shared.workers_disconnected.load();
+        stats->duplicate_results = shared.duplicate_results.load();
+        stats->job_retries = shared.job_retries.load();
+        stats->state_recovered = recovery.recovered;
+        stats->jobs_recovered =
+            recovery.jobs_completed + recovery.jobs_failed;
+        stats->jobs_requeued_after_restart = recovery.jobs_requeued;
+        stats->jobs_exhausted_after_restart = jobs_exhausted;
+        stats->persistence_errors = shared.persistence_errors.load();
+        stats->job_attempts = attempts.snapshot();
+        stats->job_states = states.snapshot();
+    };
+
+    // Every job already has a terminal outcome: this experiment finished in an
+    // earlier process, so return the aggregated result without binding a
+    // socket or waiting for workers.
+    if (results.complete()) {
+        const auto wall_start = std::chrono::steady_clock::now();
+        const double cpu_start = process_cpu_seconds();
+
+        const double wall_seconds =
+            std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - wall_start
+            ).count();
+        const double cpu_seconds = process_cpu_seconds() - cpu_start;
+
+        std::vector<ExperimentJobOutcome> outcomes = results.take();
+
+        publish_stats(/*workers_registered=*/0);
+
+        return build_experiment_result(
+            request,
+            data_summary,
+            std::move(outcomes),
+            wall_seconds,
+            cpu_seconds,
+            max_concurrent
+        );
+    }
+
+    // Bind now so workers can start and connect while the coordinator is still
+    // preparing the run. Connections queue in the listen backlog.
     net::TcpListener listener = net::TcpListener::bind(
         config.listen_host,
         config.listen_port,
@@ -845,25 +1071,6 @@ ExperimentResult run_distributed_experiment(
     if (config.on_listening) {
         config.on_listening(bound);
     }
-
-    // The coordinator needs the same data summary a local run reports. The
-    // dataset is also the source of truth for the worker's date range.
-    logger.log("loading market data from " + request.data.path);
-
-    const std::vector<MarketBar> dataset =
-        load_market_data(request.data.path);
-
-    if (dataset.empty()) {
-        throw std::runtime_error(
-            "Market data file '" + request.data.path + "' is empty"
-        );
-    }
-
-    const ExperimentDataSummary data_summary{
-        dataset.size(),
-        dataset.front().date,
-        dataset.back().date
-    };
 
     std::vector<WorkerConnection> workers;
     workers.reserve(config.expected_workers);
@@ -913,30 +1120,31 @@ ExperimentResult run_distributed_experiment(
 
     listener.close();
 
-    const std::size_t max_concurrent =
-        choose_max_concurrent(request, workers.size());
-
-    SharedState shared;
-
-    // The coordinator owns job state. Both local threads and remote workers
-    // report through the same collector, while the tracker records the
-    // pending -> running -> pending/completed/failed lifecycle.
-    JobStateTracker states(request.jobs);
-    JobStateObserver state_observer(config);
-    WorkerDisconnectObserver disconnect_observer(config);
-    AttemptTracker attempts(request.jobs.size());
-    AttemptLedger ledger;
-
-    ExperimentResultCollector results(request.jobs);
-
-    // Every expanded job enters the FIFO queue once, in request order. All jobs
-    // are enqueued before any worker thread starts, so the queue is then closed
-    // to signal that no further work will arrive.
+    // Only pending jobs enter the FIFO queue. Recovered terminal jobs keep the
+    // outcomes restored above; recovered running jobs were normalized to
+    // pending and carry their attempt count forward.
     JobQueue queue;
 
     std::vector<BacktestJobMessage> messages = build_job_messages(request);
     for (std::size_t i = 0; i < messages.size(); ++i) {
-        queue.push(QueuedJob{i, std::move(messages[i]), /*attempts=*/0});
+        if (states.state(i) != JobState::pending) {
+            continue;
+        }
+
+        const std::size_t previous_attempts = attempts.attempts(i);
+
+        // A resumed job's next delivery is attempt previous_attempts + 1, so
+        // its correlation key must match that attempt.
+        messages[i].message_id = make_run_message_id(
+            request.experiment_id,
+            request.jobs[i].job_id,
+            i,
+            previous_attempts + 1
+        );
+
+        queue.push(
+            QueuedJob{i, std::move(messages[i]), previous_attempts}
+        );
     }
     queue.close();
 
@@ -960,6 +1168,7 @@ ExperimentResult run_distributed_experiment(
             std::ref(shared),
             std::ref(attempts),
             std::ref(ledger),
+            std::ref(persister),
             std::ref(config),
             std::ref(gate),
             std::ref(logger)
@@ -1008,6 +1217,10 @@ ExperimentResult run_distributed_experiment(
         );
     }
 
+    // Every job is terminal now. Persist once more so a relaunch sees the
+    // final outcomes and does not wait for workers that are already gone.
+    persister.persist();
+
     results.wait();
 
     const auto wall_end = std::chrono::steady_clock::now();
@@ -1055,16 +1268,7 @@ ExperimentResult run_distributed_experiment(
         std::chrono::duration<double>(wall_end - wall_start).count();
 
     if (stats != nullptr) {
-        stats->workers_registered = workers.size();
-        stats->jobs_dispatched = shared.jobs_dispatched.load();
-        stats->results_received = shared.results_received.load();
-        stats->worker_errors = shared.worker_errors.load();
-        stats->transport_failures = shared.transport_failures.load();
-        stats->workers_disconnected = shared.workers_disconnected.load();
-        stats->duplicate_results = shared.duplicate_results.load();
-        stats->job_retries = shared.job_retries.load();
-        stats->job_attempts = attempts.snapshot();
-        stats->job_states = states.snapshot();
+        publish_stats(workers.size());
     }
 
     return build_experiment_result(

@@ -77,6 +77,7 @@ add_library(backtester_core
     src/coordinator/coordinator.cpp
     src/coordinator/job_queue.cpp
     src/coordinator/job_state.cpp
+    src/coordinator/persistent_state.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -196,6 +197,9 @@ add_backtester_test(protocol_tests protocol/protocol_test.cpp)
 # Coordinator scheduling
 add_backtester_test(job_queue_tests coordinator/job_queue_test.cpp)
 add_backtester_test(job_state_tests coordinator/job_state_test.cpp)
+add_backtester_test(
+    persistent_state_tests coordinator/persistent_state_test.cpp
+)
 
 # Worker loop, job execution, and development transport
 add_backtester_test(
@@ -252,6 +256,14 @@ add_backtester_test(
 )
 # Real sockets; bound the runtime if duplicate suppression regresses.
 set_tests_properties(coordinator_duplicate_test PROPERTIES TIMEOUT 30)
+
+add_backtester_test(
+    coordinator_recovery_test
+    integration/coordinator_recovery_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets and a partial state file; bound the runtime if recovery hangs.
+set_tests_properties(coordinator_recovery_test PROPERTIES TIMEOUT 30)
 
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(

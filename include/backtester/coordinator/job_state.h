@@ -49,6 +49,14 @@ class JobStateTracker {
 public:
     explicit JobStateTracker(const std::vector<ExperimentJob>& jobs);
 
+    // Restores an existing state table. `initial_states` must have exactly one
+    // entry per job. Used when a coordinator resumes from persisted state; the
+    // caller is responsible for normalizing running jobs before dispatch.
+    JobStateTracker(
+        const std::vector<ExperimentJob>& jobs,
+        const std::vector<JobState>& initial_states
+    );
+
     JobStateTracker(const JobStateTracker&) = delete;
     JobStateTracker& operator=(const JobStateTracker&) = delete;
 

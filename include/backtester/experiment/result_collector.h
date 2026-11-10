@@ -60,6 +60,10 @@ public:
         const std::function<std::string(std::size_t)>& error_for_index
     );
 
+    // Copy of the current outcomes in request order. Pending jobs hold
+    // std::nullopt. Used to checkpoint in-memory state without consuming it.
+    std::vector<std::optional<ExperimentJobOutcome>> snapshot() const;
+
     // Blocks until every job has a terminal outcome.
     void wait() const;
 

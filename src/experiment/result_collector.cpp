@@ -110,6 +110,12 @@ std::size_t ExperimentResultCollector::fail_remaining(
     return marked;
 }
 
+std::vector<std::optional<ExperimentJobOutcome>>
+ExperimentResultCollector::snapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return outcomes_;
+}
+
 void ExperimentResultCollector::wait() const {
     std::unique_lock<std::mutex> lock(mutex_);
     condition_.wait(lock, [this] {

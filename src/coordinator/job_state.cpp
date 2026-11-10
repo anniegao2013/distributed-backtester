@@ -51,6 +51,23 @@ JobStateTracker::JobStateTracker(const std::vector<ExperimentJob>& jobs)
     }
 }
 
+JobStateTracker::JobStateTracker(
+    const std::vector<ExperimentJob>& jobs,
+    const std::vector<JobState>& initial_states
+) : states_(initial_states) {
+    if (initial_states.size() != jobs.size()) {
+        throw std::invalid_argument(
+            "Initial job state table must have one entry per job"
+        );
+    }
+
+    job_ids_.reserve(jobs.size());
+
+    for (const ExperimentJob& job : jobs) {
+        job_ids_.push_back(job.job_id);
+    }
+}
+
 std::size_t JobStateTracker::size() const noexcept {
     return states_.size();
 }

@@ -413,6 +413,13 @@ know whether it is running a job for the first time. The coordinator bounds
 attempts, suppresses repeated result/error submissions by `message_id`, and
 never records more than one terminal outcome per request job.
 
+Coordinator crash recovery is also coordinator-local and does not change the
+protocol. With `--state PATH`, the coordinator stores job states, attempt
+counts, and terminal outcomes in a JSON file. On restart it reuses terminal
+outcomes, requeues jobs that were running, and regenerates `message_id` values
+for resumed attempts. Workers see ordinary `backtest_job` messages and cannot
+tell whether an attempt is new, retried, or resumed after a restart.
+
 Not yet implemented in version 1:
 
 - job timeouts;

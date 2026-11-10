@@ -26,6 +26,10 @@
 // failed. A retryable failure moves a running job back to pending and returns
 // it to the queue while attempts remain. Workers never publish state directly;
 // their replies are interpreted by the coordinator.
+//
+// State is in memory by default. When CoordinatorConfig::state_path is set, the
+// coordinator also checkpoints it to one JSON file and can resume the same
+// experiment after a restart.
 
 // Emitted once when the coordinator detects that a worker connection is gone.
 // `job_id` is empty when the worker was lost before it was given work.
@@ -64,6 +68,14 @@ struct CoordinatorConfig {
     // retried. worker_error replies and transport failures are always
     // retryable while attempts remain.
     bool retry_failed_results = true;
+
+    // Optional path to a durable coordinator state file. When empty (the
+    // default) the run is entirely in memory. When set, the coordinator loads
+    // a previous checkpoint for this experiment, resumes only the jobs that
+    // are not terminal, and atomically rewrites the file as state changes.
+    // Persistence failures are logged and counted, not fatal, so a full disk
+    // cannot strand connected workers.
+    std::string state_path;
 
     // Called once, after the listening socket is bound and before the
     // coordinator starts accepting. Useful for tests and for learning the
@@ -108,6 +120,26 @@ struct CoordinatorStats {
     // is requeued but never retried because every worker has gone is not
     // counted here.
     std::size_t job_retries = 0;
+
+    // True when a state file was loaded and the run resumed from it.
+    bool state_recovered = false;
+
+    // Number of terminal outcomes restored from the state file. Jobs that were
+    // persisted as running are not included; they were requeued instead.
+    std::size_t jobs_recovered = 0;
+
+    // Jobs that were persisted as running when the previous coordinator
+    // stopped and were returned to pending. Their result was unknown, so they
+    // may run again.
+    std::size_t jobs_requeued_after_restart = 0;
+
+    // Jobs with no outcome whose persisted attempt count already reached
+    // max_job_attempts. They cannot be retried and are failed during recovery.
+    std::size_t jobs_exhausted_after_restart = 0;
+
+    // State-file writes that failed. The run continues in memory; a stale file
+    // may remain on disk.
+    std::size_t persistence_errors = 0;
 
     // Number of dispatch attempts made for each job, in request order. A job
     // that completed or failed on its first delivery has a count of 1. Jobs

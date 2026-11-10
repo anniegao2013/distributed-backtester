@@ -24,7 +24,9 @@ worker loop never retries on its own.
 A worker may receive the same `(experiment_id, job_id)` more than once. Each
 attempt arrives as a normal `backtest_job` with a fresh `message_id`, and the
 worker should execute it normally; it must not assume that a `job_id` is seen at
-most once per connection.
+most once per connection. This includes attempts resumed after a coordinator
+restart: the coordinator may ask a worker to run a job that another worker had
+already started, because the earlier result was never recorded.
 
 ## Lifecycle
 
@@ -213,8 +215,9 @@ touches the wire.
 
 - Connection timeouts and automatic reconnection.
 - Heartbeats and worker capacity advertisement.
-- Duplicate suppression by `message_id`; retries are bounded by the
-  coordinator, and a repeated job is executed again.
+- Duplicate suppression by `message_id` on the worker; the coordinator suppresses
+  duplicate *submissions*, and a repeated job is executed again.
+- Worker-side persistence or recovery; job state belongs to the coordinator.
 - Multiple jobs in flight per worker.
 
 Those are transport and coordination concerns. The worker loop is deliberately

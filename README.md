@@ -22,6 +22,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Worker crash and disconnect detection:** The coordinator checks idle connections, requeues work that was never delivered, retries or fails the in-flight job of a worker that disappears, and continues on healthy workers. Lost workers are counted in stats and reported through a disconnect callback instead of being waited on forever.
 - **Bounded job retries and reassignment:** Retryable failures (`worker_error`, transport/protocol loss, and optionally `backtest_result` status `failed`) are returned to the queue with a fresh `message_id`, offered to the next available worker, and failed only when the attempt limit is reached. Validation failures are terminal immediately, and per-job attempt counts plus a total retry count are reported.
 - **Idempotent result handling:** A repeated `backtest_result` or `worker_error` whose `message_id` was already handled is ignored. The first terminal outcome wins, so a duplicate cannot overwrite a result, advance a state twice, consume an extra attempt, or be mistaken for the next job's reply. Ignored duplicates are counted separately.
+- **Persistent job state and restart recovery:** With `--state PATH`, the coordinator checkpoints job states, attempt counts, and terminal outcomes to one versioned JSON file using atomic writes. A relaunch resumes the same experiment: terminal jobs are reused, jobs that were running are requeued, and jobs whose attempts were already exhausted fail with an explanatory message. A completed run returns immediately without waiting for workers.
 - **Terminal-state aggregation:** Local threads and remote workers both report into one result collector indexed by request order. An experiment finishes only when every job has completed or failed, and the same aggregation code builds the response regardless of where the job ran.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
@@ -114,7 +115,9 @@ existing engine and replies with a `backtest_result`. A retryable failure is put
 back in the queue with a new `message_id` and a higher attempt count, so it can
 land on a different worker; `--max-attempts` (default 3) bounds this. When every
 job is terminal the coordinator sends `shutdown` to every worker and aggregates
-the results into the same experiment response produced by a local run.
+the results into the same experiment response produced by a local run. Passing
+`--state PATH` makes that state durable, so a restarted coordinator resumes the
+same experiment instead of starting over.
 
 ```bash
 # Terminal 1: coordinator. It waits for two workers before dispatching.
@@ -134,6 +137,10 @@ the results into the same experiment response produced by a local run.
 # default; add --no-retry-failed-results to retry only worker/transport errors.
 ./build/backtester_coordinator \
   --experiment experiments/demo.json --workers 2 --max-attempts 5
+
+# Checkpoint progress. Re-running the same command resumes unfinished jobs.
+./build/backtester_coordinator \
+  --experiment experiments/demo.json --workers 2 --state run-state.json
 ```
 
 TCP frames are a 4-byte big-endian payload length followed by one UTF-8 JSON
