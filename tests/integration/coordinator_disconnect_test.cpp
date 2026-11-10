@@ -365,14 +365,19 @@ void test_worker_crash_during_job() {
         "the event must identify the in-flight job"
     );
     expect(
-        disconnects[0].job_failed,
-        "the in-flight job must be reported as failed"
+        !disconnects[0].job_failed,
+        "the in-flight job must be requeued instead of failed immediately"
+    );
+    expect(
+        disconnects[0].job_retry_scheduled,
+        "the in-flight job must be scheduled for a retry"
     );
 
     expect(
         run.result.results[0].error ==
-            "connection closed before a result was received",
-        "the in-flight job must explain the lost connection"
+            "job was not completed after 1 attempt(s); "
+            "no worker remained to retry it",
+        "the requeued job must explain why it could not be retried"
     );
 
     for (std::size_t i = 1; i < run.result.results.size(); ++i) {

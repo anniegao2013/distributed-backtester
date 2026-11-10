@@ -39,9 +39,10 @@ experiment request
   -> coordinator expands strategies into jobs
   -> workers connect independently and each sends one worker_ready
   -> coordinator accepts the configured number of workers
-  -> one backtest_job per job, each with a unique message_id
+  -> one backtest_job per attempt, each with a unique message_id
   -> worker validates and runs the backtest
-  -> one backtest_result per job, echoing message_id
+  -> one backtest_result per attempt, echoing message_id
+  -> coordinator retries a retryable attempt with a new message_id
   -> coordinator assigns the next job to that worker
   -> coordinator aggregates results into the experiment response
   -> coordinator sends one shutdown when the run is complete
@@ -70,9 +71,12 @@ Every message has these top-level fields:
 `message_id` is chosen by the sender and echoed by the receiver. It is the
 correlation key, not the job identity: the coordinator may retry the same job
 with a new `message_id`, or reuse it so a worker can cache and deduplicate the
-reply. `job_id` is deterministic within an experiment (`ma-1`, `ma-2`, ...) but
-is not globally unique, so use `(experiment_id, job_id)` for reporting and
-`message_id` for wire correlation.
+reply. The built-in coordinator uses a fresh key for every attempt so a late
+reply cannot be mistaken for the current one. `job_id` is deterministic within
+an experiment (`ma-1`, `ma-2`, ...) but is not globally unique, so use
+`(experiment_id, job_id)` for reporting and `message_id` for wire correlation.
+A worker must therefore treat two jobs with the same `(experiment_id, job_id)`
+but different `message_id` values as two separate attempts.
 
 ## `worker_ready`
 
@@ -326,7 +330,9 @@ Per-job strategy and data failures still use `backtest_result` with status
 
 The coordinator treats a `worker_error` as a failed attempt for the current job.
 It keeps the connection open because a protocol or execution error may be
-specific to one job, but it records the failure in the aggregate result.
+specific to one job. If the job still has attempts remaining, the coordinator
+requeues it with a new `message_id`; otherwise the error becomes the job's
+terminal failure. It never records the same job twice.
 
 `protocol_error` is the previous name of this message. It remains valid input,
 and an error parsed under that name is serialized as `worker_error`.
@@ -389,15 +395,20 @@ The transport owns concerns that are deliberately not in the message:
 - logging and metrics around network and execution time.
 
 The coordinator treats a closed or reset connection as a lost worker. It stops
-scheduling that worker, returns undelivered work to the queue, fails the job that
-was in flight if there was one, and continues with the remaining workers. This
-detects process crashes and disconnects; the protocol has no heartbeat, so a
-worker that stays connected but stops responding is not detected without a job
-timeout.
+scheduling that worker, returns undelivered work to the queue, and either
+requeues the in-flight job (when attempts remain) or marks it failed. It then
+continues with the remaining workers. This detects process crashes and
+disconnects; the protocol has no heartbeat, so a worker that stays connected but
+stops responding is not detected without a job timeout.
+
+Retries are coordinator-local: the wire messages are unchanged. Each attempt is
+a normal `backtest_job` with a new `message_id`; the worker does not need to
+know whether it is running a job for the first time. The coordinator bounds
+attempts and never records more than one terminal outcome per request job.
 
 Not yet implemented in version 1:
 
-- job timeouts, automatic retry, and duplicate suppression by `message_id`;
+- job timeouts and duplicate suppression by `message_id`;
 - reconnection after a worker drops;
 - heartbeat-based liveness for a connected but unresponsive worker;
 - authentication and encryption.

@@ -11,10 +11,14 @@
 
 // The unit stored in the coordinator's job queue. The index preserves the
 // position of the job in the finalized experiment's request order; outcomes are
-// written back to that slot.
+// written back to that slot. `attempts` is the number of dispatch attempts
+// already made: 0 before the first delivery, 1 after it, and so on. A retry
+// keeps the same index and count until its delivery succeeds, and carries a new
+// message_id for the upcoming attempt.
 struct QueuedJob {
     std::size_t index = 0;
     BacktestJobMessage message;
+    std::size_t attempts = 0;
 };
 
 // Thread-safe FIFO queue used to distribute jobs across workers.
@@ -50,6 +54,12 @@ public:
     // must be offered to another worker. Unlike push(), this is allowed after
     // close() because it returns existing work rather than adding new work.
     void requeue_front(QueuedJob job);
+
+    // Appends a failed attempt to the back of the queue. Retries go to the back
+    // so other queued work keeps making progress and, when several workers are
+    // available, the retry can land on a different worker. Like
+    // requeue_front(), this is allowed after close().
+    void requeue_back(QueuedJob job);
 
     // Stops accepting new jobs and wakes every blocked pop(). Jobs already
     // queued remain available until they are popped.

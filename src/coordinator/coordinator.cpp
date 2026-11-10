@@ -118,19 +118,26 @@ double process_cpu_seconds() {
 std::string make_run_message_id(
     const std::string& experiment_id,
     const std::string& job_id,
-    std::size_t index
+    std::size_t index,
+    std::size_t attempt
 ) {
     const std::string sequence = std::to_string(index + 1);
+    const std::string retry_suffix =
+        attempt > 1
+            ? ":retry:" + std::to_string(attempt)
+            : std::string();
+
     const std::string candidate =
-        experiment_id + ":" + job_id + ":" + sequence;
+        experiment_id + ":" + job_id + ":" + sequence + retry_suffix;
 
     if (candidate.size() <= kMaxIdentifierLength) {
         return candidate;
     }
 
     // Keep the correlation key valid even when the experiment and job IDs are
-    // close to their individual limits.
-    return "job:" + sequence;
+    // close to their individual limits. The sequence still makes the key
+    // unique across jobs and the retry suffix makes it unique across attempts.
+    return "job:" + sequence + retry_suffix;
 }
 
 std::string make_shutdown_message_id(
@@ -159,7 +166,12 @@ std::vector<BacktestJobMessage> build_job_messages(
 
         BacktestJobMessage message;
         message.message_id =
-            make_run_message_id(request.experiment_id, job.job_id, i);
+            make_run_message_id(
+                request.experiment_id,
+                job.job_id,
+                i,
+                /*attempt=*/1
+            );
         message.job.experiment_id = request.experiment_id;
         message.job.job_id = job.job_id;
         message.job.strategy_id = job.strategy_id;
@@ -266,6 +278,36 @@ struct SharedState {
     std::atomic<std::size_t> worker_errors{0};
     std::atomic<std::size_t> transport_failures{0};
     std::atomic<std::size_t> workers_disconnected{0};
+    std::atomic<std::size_t> job_retries{0};
+};
+
+// Thread-safe attempt counter indexed by request order. The queue also carries
+// the attempt number, but the coordinator needs a stable per-job view for
+// stats and for explaining jobs left pending when every worker is gone.
+class AttemptTracker {
+public:
+    explicit AttemptTracker(std::size_t count) : attempts_(count, 0) {}
+
+    // Records a successful delivery and returns the new attempt number
+    // (1 for the first attempt).
+    std::size_t record_attempt(std::size_t index) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return ++attempts_.at(index);
+    }
+
+    std::size_t attempts(std::size_t index) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return attempts_.at(index);
+    }
+
+    std::vector<std::size_t> snapshot() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return attempts_;
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::vector<std::size_t> attempts_;
 };
 
 // Bounds the number of jobs in flight independently of the number of
@@ -303,10 +345,18 @@ void send_job(
     shared.jobs_dispatched.fetch_add(1);
 }
 
-ExperimentJobOutcome receive_result(
+// One delivery attempt. The outcome is only terminal when `retryable` is
+// false; otherwise the caller may requeue the job while attempts remain.
+struct AttemptResult {
+    ExperimentJobOutcome outcome;
+    bool retryable = false;
+};
+
+AttemptResult receive_result(
     WorkerConnection& worker,
     const BacktestJobMessage& job,
-    SharedState& shared
+    SharedState& shared,
+    bool retry_failed_results
 ) {
     const std::optional<std::string> reply = worker.channel.receive();
 
@@ -339,7 +389,17 @@ ExperimentJobOutcome receive_result(
         }
 
         shared.results_received.fetch_add(1);
-        return result_to_outcome(job, message);
+
+        // "invalid" is deterministic worker-side validation and never
+        // benefits from another attempt. "failed" is a runtime failure that
+        // may be specific to one worker, so it is retryable when enabled.
+        const bool retryable =
+            message.result.status == "failed" && retry_failed_results;
+
+        return AttemptResult{
+            result_to_outcome(job, message),
+            retryable
+        };
     }
 
     if (envelope.type == "worker_error" ||
@@ -360,7 +420,10 @@ ExperimentJobOutcome receive_result(
             ? "Worker '" + worker.worker_id + "' reported " +
                   message.error.type
             : message.error.message;
-        return outcome;
+
+        // A worker_error means no backtest_result is available for this
+        // attempt. The job itself remains valid, so another worker can run it.
+        return AttemptResult{std::move(outcome), /*retryable=*/true};
     }
 
     throw std::runtime_error(
@@ -377,6 +440,7 @@ void report_worker_lost(
     const std::string& reason,
     const std::string& job_id,
     bool job_failed,
+    bool job_retry_scheduled,
     SharedState& shared,
     WorkerDisconnectObserver& disconnect_observer,
     Logger& logger
@@ -398,9 +462,47 @@ void report_worker_lost(
             worker.worker_id,
             reason,
             job_id,
-            job_failed
+            job_failed,
+            job_retry_scheduled
         }
     );
+}
+
+// Returns a failed attempt to the queue while attempts remain. The new attempt
+// number is reflected in a fresh correlation key. State moves back to pending
+// before the job becomes visible to other workers, so a concurrent mark_running
+// always starts from pending.
+bool schedule_retry(
+    QueuedJob& queued,
+    const CoordinatorConfig& config,
+    const std::string& reason,
+    JobQueue& queue,
+    JobStateTracker& states,
+    JobStateObserver& state_observer,
+    Logger& logger
+) {
+    if (queued.attempts >= config.max_job_attempts) {
+        return false;
+    }
+
+    const std::size_t next_attempt = queued.attempts + 1;
+
+    queued.message.message_id = make_run_message_id(
+        queued.message.job.experiment_id,
+        queued.message.job.job_id,
+        queued.index,
+        next_attempt
+    );
+
+    logger.log(
+        "retrying job '" + queued.message.job.job_id + "' after attempt " +
+        std::to_string(queued.attempts) + " of " +
+        std::to_string(config.max_job_attempts) + ": " + reason
+    );
+
+    state_observer.publish(states.mark_pending(queued.index));
+    queue.requeue_back(std::move(queued));
+    return true;
 }
 
 void worker_loop(
@@ -411,6 +513,8 @@ void worker_loop(
     WorkerDisconnectObserver& disconnect_observer,
     ExperimentResultCollector& results,
     SharedState& shared,
+    AttemptTracker& attempts,
+    const CoordinatorConfig& config,
     JobGate& gate,
     Logger& logger
 ) {
@@ -427,6 +531,7 @@ void worker_loop(
                 "connection closed while waiting for work",
                 "",
                 false,
+                false,
                 shared,
                 disconnect_observer,
                 logger
@@ -440,9 +545,10 @@ void worker_loop(
         if (!queued) {
             gate.release();
 
-            // Closed and empty means every job has been handed out. Otherwise
-            // the wait timed out and the next iteration re-checks the worker.
-            if (queue.closed()) {
+            // A closed, empty queue is not enough to stop: another worker may
+            // still fail a job and requeue it for a retry. Stay available until
+            // every job has a terminal outcome.
+            if (queue.closed() && results.complete()) {
                 return;
             }
 
@@ -458,27 +564,6 @@ void worker_loop(
                 "connection closed before a job could be assigned",
                 "",
                 false,
-                shared,
-                disconnect_observer,
-                logger
-            );
-            return;
-        }
-
-        const std::size_t index = queued->index;
-        const BacktestJobMessage& job = queued->message;
-
-        try {
-            send_job(worker, job, shared);
-        } catch (const std::exception& error) {
-            // The job never reached the worker, so it is still pending and can
-            // be offered to a healthy worker.
-            queue.requeue_front(std::move(*queued));
-            gate.release();
-            report_worker_lost(
-                worker,
-                "could not assign work: " + std::string(error.what()),
-                "",
                 false,
                 shared,
                 disconnect_observer,
@@ -487,27 +572,81 @@ void worker_loop(
             return;
         }
 
-        // The job is running only once it has been handed to the worker.
+        const std::size_t index = queued->index;
+        const std::string job_id = queued->message.job.job_id;
+
+        try {
+            send_job(worker, queued->message, shared);
+        } catch (const std::exception& error) {
+            // The job never reached the worker, so no attempt was consumed. It
+            // is still pending and can be offered to a healthy worker.
+            queue.requeue_front(std::move(*queued));
+            gate.release();
+            report_worker_lost(
+                worker,
+                "could not assign work: " + std::string(error.what()),
+                "",
+                false,
+                false,
+                shared,
+                disconnect_observer,
+                logger
+            );
+            return;
+        }
+
+        // The job is running only once it has been handed to the worker. The
+        // attempt counter advances only for deliveries that actually happened.
+        queued->attempts = attempts.record_attempt(index);
+
+        if (queued->attempts > 1) {
+            shared.job_retries.fetch_add(1);
+        }
+
         logger.log(
-            "assigning job '" + job.job.job_id + "' to worker '" +
-            worker.worker_id + "'"
+            "assigning job '" + job_id + "' to worker '" +
+            worker.worker_id + "' (attempt " +
+            std::to_string(queued->attempts) + " of " +
+            std::to_string(config.max_job_attempts) + ")"
         );
         state_observer.publish(states.mark_running(index));
 
         try {
-            ExperimentJobOutcome outcome =
-                receive_result(worker, job, shared);
-            const bool completed = outcome.ok;
+            AttemptResult attempt =
+                receive_result(
+                    worker,
+                    queued->message,
+                    shared,
+                    config.retry_failed_results
+                );
+
+            const bool completed = attempt.outcome.ok;
 
             logger.log(
                 completed
                     ? "worker '" + worker.worker_id + "' completed job '" +
-                          job.job.job_id + "'"
+                          job_id + "'"
                     : "worker '" + worker.worker_id + "' failed job '" +
-                          job.job.job_id + "'"
+                          job_id + "'"
             );
 
-            results.record(index, std::move(outcome));
+            if (attempt.retryable &&
+                schedule_retry(
+                    *queued,
+                    config,
+                    attempt.outcome.error,
+                    queue,
+                    states,
+                    state_observer,
+                    logger
+                )) {
+                gate.release();
+                continue;
+            }
+
+            // The outcome is terminal: the attempt succeeded, the failure is
+            // non-retryable, or the attempt limit has been reached.
+            results.record(index, std::move(attempt.outcome));
             state_observer.publish(
                 completed
                     ? states.mark_completed(index)
@@ -515,20 +654,35 @@ void worker_loop(
             );
             gate.release();
         } catch (const std::exception& error) {
-            // The job was delivered but its reply is gone. Version 1 does not
-            // retry an in-flight job, so it ends as failed.
-            results.record(
-                index,
-                failed_outcome(job.job, error.what())
+            // The job was delivered but its reply is gone, or the reply could
+            // not be correlated. The worker is removed from scheduling. The
+            // job returns to the queue when attempts remain.
+            const bool retry_scheduled = schedule_retry(
+                *queued,
+                config,
+                error.what(),
+                queue,
+                states,
+                state_observer,
+                logger
             );
-            state_observer.publish(states.mark_failed(index));
+
+            if (!retry_scheduled) {
+                results.record(
+                    index,
+                    failed_outcome(queued->message.job, error.what())
+                );
+                state_observer.publish(states.mark_failed(index));
+            }
+
             gate.release();
             report_worker_lost(
                 worker,
-                "lost while running job '" + job.job.job_id + "': " +
+                "lost while running job '" + job_id + "': " +
                     error.what(),
-                job.job.job_id,
-                true,
+                job_id,
+                !retry_scheduled,
+                retry_scheduled,
                 shared,
                 disconnect_observer,
                 logger
@@ -573,6 +727,12 @@ ExperimentResult run_distributed_experiment(
     if (config.expected_workers == 0) {
         throw std::invalid_argument(
             "Coordinator requires at least one expected worker"
+        );
+    }
+
+    if (config.max_job_attempts == 0) {
+        throw std::invalid_argument(
+            "Coordinator requires at least one attempt per job"
         );
     }
 
@@ -675,10 +835,11 @@ ExperimentResult run_distributed_experiment(
 
     // The coordinator owns job state. Both local threads and remote workers
     // report through the same collector, while the tracker records the
-    // pending -> running -> completed/failed lifecycle.
+    // pending -> running -> pending/completed/failed lifecycle.
     JobStateTracker states(request.jobs);
     JobStateObserver state_observer(config);
     WorkerDisconnectObserver disconnect_observer(config);
+    AttemptTracker attempts(request.jobs.size());
 
     ExperimentResultCollector results(request.jobs);
 
@@ -689,7 +850,7 @@ ExperimentResult run_distributed_experiment(
 
     std::vector<BacktestJobMessage> messages = build_job_messages(request);
     for (std::size_t i = 0; i < messages.size(); ++i) {
-        queue.push(QueuedJob{i, std::move(messages[i])});
+        queue.push(QueuedJob{i, std::move(messages[i]), /*attempts=*/0});
     }
     queue.close();
 
@@ -711,6 +872,8 @@ ExperimentResult run_distributed_experiment(
             std::ref(disconnect_observer),
             std::ref(results),
             std::ref(shared),
+            std::ref(attempts),
+            std::ref(config),
             std::ref(gate),
             std::ref(logger)
         );
@@ -722,9 +885,21 @@ ExperimentResult run_distributed_experiment(
 
     // A job is terminal when it has completed or failed. If every worker
     // stopped while jobs were still queued, those jobs can no longer run, so
-    // record them as failed before declaring the experiment complete.
+    // record them as failed before declaring the experiment complete. A job
+    // that was requeued for a retry but never picked up again gets a message
+    // that reflects the attempts already made.
     const std::size_t abandoned = results.fail_remaining(
-        "job was not dispatched to a worker"
+        [&attempts](std::size_t index) {
+            const std::size_t made = attempts.attempts(index);
+
+            if (made == 0) {
+                return std::string("job was not dispatched to a worker");
+            }
+
+            return "job was not completed after " +
+                   std::to_string(made) +
+                   " attempt(s); no worker remained to retry it";
+        }
     );
     const std::vector<JobStateTransition> pending_failures =
         states.fail_pending();
@@ -742,7 +917,7 @@ ExperimentResult run_distributed_experiment(
     if (abandoned > 0) {
         logger.log(
             std::to_string(abandoned) +
-            " job(s) were not dispatched to a worker"
+            " job(s) were not completed because no worker remained"
         );
     }
 
@@ -778,6 +953,7 @@ ExperimentResult run_distributed_experiment(
                         std::string(error.what()),
                     "",
                     false,
+                    false,
                     shared,
                     disconnect_observer,
                     logger
@@ -798,6 +974,8 @@ ExperimentResult run_distributed_experiment(
         stats->worker_errors = shared.worker_errors.load();
         stats->transport_failures = shared.transport_failures.load();
         stats->workers_disconnected = shared.workers_disconnected.load();
+        stats->job_retries = shared.job_retries.load();
+        stats->job_attempts = attempts.snapshot();
         stats->job_states = states.snapshot();
     }
 

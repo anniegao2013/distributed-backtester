@@ -23,17 +23,21 @@
 //
 // The coordinator owns the authoritative job state table: jobs start pending
 // in its queue, move to running when a worker takes them, and end completed or
-// failed. Workers never publish state directly; their replies are interpreted
-// by the coordinator.
+// failed. A retryable failure moves a running job back to pending and returns
+// it to the queue while attempts remain. Workers never publish state directly;
+// their replies are interpreted by the coordinator.
 
 // Emitted once when the coordinator detects that a worker connection is gone.
-// `job_id` is empty when the worker was lost before it was given work;
-// `job_failed` is true when an in-flight job had to be marked failed.
+// `job_id` is empty when the worker was lost before it was given work.
+// `job_failed` is true when an in-flight job was marked failed; when the job
+// still had attempts left it is requeued instead, and
+// `job_retry_scheduled` is true.
 struct WorkerDisconnectEvent {
     std::string worker_id;
     std::string reason;
     std::string job_id;
     bool job_failed = false;
+    bool job_retry_scheduled = false;
 };
 
 struct CoordinatorConfig {
@@ -46,6 +50,20 @@ struct CoordinatorConfig {
     // Connections to accept before dispatching starts. The coordinator blocks
     // until every worker has connected and announced worker_ready.
     std::size_t expected_workers = 1;
+
+    // Maximum number of times one job may be dispatched to a worker. The first
+    // delivery counts as attempt 1. When an attempt fails in a retryable way
+    // and attempts remain, the job returns to the queue and is offered to the
+    // next available worker. 1 disables retries. Must be at least 1.
+    std::size_t max_job_attempts = 3;
+
+    // A backtest_result with status "failed" reports a runtime failure, which
+    // may be specific to one worker or transient. When true it is retried
+    // within max_job_attempts; when false it is terminal immediately.
+    // Status "invalid" is a deterministic validation failure and is never
+    // retried. worker_error replies and transport failures are always
+    // retryable while attempts remain.
+    bool retry_failed_results = true;
 
     // Called once, after the listening socket is bound and before the
     // coordinator starts accepting. Useful for tests and for learning the
@@ -77,9 +95,19 @@ struct CoordinatorStats {
     std::size_t transport_failures = 0;
 
     // Workers whose connection was lost during the run. Such a worker is
-    // removed from scheduling; its in-flight job (if any) becomes failed and
-    // queued work is offered to the remaining workers.
+    // removed from scheduling; its in-flight job (if any) is requeued when
+    // attempts remain, and queued work is offered to the remaining workers.
     std::size_t workers_disconnected = 0;
+
+    // Number of dispatch attempts after the first, across all jobs. A job that
+    // is requeued but never retried because every worker has gone is not
+    // counted here.
+    std::size_t job_retries = 0;
+
+    // Number of dispatch attempts made for each job, in request order. A job
+    // that completed or failed on its first delivery has a count of 1. Jobs
+    // that were never dispatched have a count of 0.
+    std::vector<std::size_t> job_attempts;
 
     // Final coordinator-owned state for every job, in request order. Once
     // run_distributed_experiment() returns, every entry is completed or failed.

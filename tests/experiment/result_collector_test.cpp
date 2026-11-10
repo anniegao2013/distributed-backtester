@@ -220,6 +220,33 @@ void test_fail_remaining_terminates_only_pending_jobs() {
     expect(!outcomes[2].ok, "a pending job must fail");
 }
 
+void test_fail_remaining_can_explain_each_job() {
+    const std::vector<ExperimentJob> jobs = make_jobs(3);
+    ExperimentResultCollector collector(jobs);
+
+    collector.record(1, completed_outcome(jobs[1]));
+
+    const std::size_t marked = collector.fail_remaining(
+        [](std::size_t index) {
+            return "job " + std::to_string(index) + " was abandoned";
+        }
+    );
+
+    expect(marked == 2, "the callback form must mark every pending job");
+
+    const std::vector<ExperimentJobOutcome> outcomes = collector.take();
+
+    expect(
+        outcomes[0].error == "job 0 was abandoned",
+        "the callback message must use the request index"
+    );
+    expect(outcomes[1].ok, "a completed job must not be overwritten");
+    expect(
+        outcomes[2].error == "job 2 was abandoned",
+        "each pending job must receive its own message"
+    );
+}
+
 void test_concurrent_recording_preserves_every_job() {
     constexpr std::size_t kJobCount = 100;
     constexpr std::size_t kThreadCount = 8;
@@ -294,6 +321,7 @@ int main() {
         test_duplicate_and_out_of_range_records_are_rejected();
         test_take_requires_a_terminal_state_for_every_job();
         test_fail_remaining_terminates_only_pending_jobs();
+        test_fail_remaining_can_explain_each_job();
         test_concurrent_recording_preserves_every_job();
 
         std::cout << "result_collector_tests passed\n";

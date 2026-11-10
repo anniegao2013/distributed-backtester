@@ -4,6 +4,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -47,6 +48,13 @@ public:
     // after every worker has failed. Completed jobs are never overwritten.
     // Returns the number of jobs newly marked terminal.
     std::size_t fail_remaining(const std::string& error);
+
+    // Like fail_remaining(), but chooses the message per request index. This
+    // lets the coordinator distinguish a job that never reached a worker from
+    // one whose retry was still queued when the last worker disappeared.
+    std::size_t fail_remaining(
+        const std::function<std::string(std::size_t)>& error_for_index
+    );
 
     // Blocks until every job has a terminal outcome.
     void wait() const;

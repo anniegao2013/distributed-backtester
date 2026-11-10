@@ -73,6 +73,16 @@ void ExperimentResultCollector::record(
 std::size_t ExperimentResultCollector::fail_remaining(
     const std::string& error
 ) {
+    return fail_remaining(
+        [&error](std::size_t) {
+            return error;
+        }
+    );
+}
+
+std::size_t ExperimentResultCollector::fail_remaining(
+    const std::function<std::string(std::size_t)>& error_for_index
+) {
     std::size_t marked = 0;
 
     {
@@ -83,7 +93,10 @@ std::size_t ExperimentResultCollector::fail_remaining(
                 continue;
             }
 
-            outcomes_[i] = failed_outcome(jobs_[i], error);
+            outcomes_[i] = failed_outcome(
+                jobs_[i],
+                error_for_index(i)
+            );
             ++terminal_count_;
             ++marked;
         }

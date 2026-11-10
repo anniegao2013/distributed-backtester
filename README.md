@@ -19,7 +19,8 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Standalone worker:** `backtester_worker` connects to a coordinator with `--connect HOST:PORT`, announces `worker_ready`, then receives one job at a time, runs the existing engine, and replies with one result. It keeps serving until it receives a `shutdown` message or its connection closes. The same loop also runs over a line-oriented stdio transport for local debugging.
 - **Distributed coordinator:** `backtester_coordinator` is a TCP server that accepts workers, expands an experiment into jobs, assigns each job to an available worker, collects results, and aggregates them into the normal experiment response. Slow jobs do not block other workers.
 - **Coordinator-owned job states:** Every job moves through `pending`, `running`, `completed`, or `failed` in a coordinator-side state table. Workers only report results; the coordinator is the single source of truth and exposes transitions to observers.
-- **Worker crash and disconnect detection:** The coordinator checks idle connections, requeues work that was never delivered, fails the in-flight job of a worker that disappears, and continues on healthy workers. Lost workers are counted in stats and reported through a disconnect callback instead of being retried or waited on forever.
+- **Worker crash and disconnect detection:** The coordinator checks idle connections, requeues work that was never delivered, retries or fails the in-flight job of a worker that disappears, and continues on healthy workers. Lost workers are counted in stats and reported through a disconnect callback instead of being waited on forever.
+- **Bounded job retries and reassignment:** Retryable failures (`worker_error`, transport/protocol loss, and optionally `backtest_result` status `failed`) are returned to the queue with a fresh `message_id`, offered to the next available worker, and failed only when the attempt limit is reached. Validation failures are terminal immediately, and per-job attempt counts plus a total retry count are reported.
 - **Terminal-state aggregation:** Local threads and remote workers both report into one result collector indexed by request order. An experiment finishes only when every job has completed or failed, and the same aggregation code builds the response regardless of where the job ran.
 - **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
 - **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
@@ -108,9 +109,11 @@ send/receive, with framing and connection lifecycle owned by the channel. The
 coordinator expands an experiment into `backtest_job` messages and queues them in
 request order for FIFO distribution: a worker is available exactly when it has
 finished its previous job and takes the oldest queued job. The worker runs the
-existing engine and replies with a `backtest_result`. When the queue is empty the
-coordinator sends `shutdown` to every worker and aggregates the results into the
-same experiment response produced by a local run.
+existing engine and replies with a `backtest_result`. A retryable failure is put
+back in the queue with a new `message_id` and a higher attempt count, so it can
+land on a different worker; `--max-attempts` (default 3) bounds this. When every
+job is terminal the coordinator sends `shutdown` to every worker and aggregates
+the results into the same experiment response produced by a local run.
 
 ```bash
 # Terminal 1: coordinator. It waits for two workers before dispatching.
@@ -125,6 +128,11 @@ same experiment response produced by a local run.
 # Machine-readable output uses the standard experiment result schema.
 ./build/backtester_coordinator \
   --experiment experiments/demo.json --workers 2 --json
+
+# Allow up to five dispatch attempts per job. Runtime failures are retried by
+# default; add --no-retry-failed-results to retry only worker/transport errors.
+./build/backtester_coordinator \
+  --experiment experiments/demo.json --workers 2 --max-attempts 5
 ```
 
 TCP frames are a 4-byte big-endian payload length followed by one UTF-8 JSON

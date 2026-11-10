@@ -60,6 +60,15 @@ void JobQueue::requeue_front(QueuedJob job) {
     condition_.notify_one();
 }
 
+void JobQueue::requeue_back(QueuedJob job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        jobs_.push_back(std::move(job));
+    }
+
+    condition_.notify_one();
+}
+
 void JobQueue::close() {
     {
         std::lock_guard<std::mutex> lock(mutex_);

@@ -17,7 +17,14 @@ coordinator is the single source of truth for whether that job is `running`,
 
 A crashed or disconnected worker simply closes its TCP connection. The
 coordinator notices the closed socket, removes that worker from scheduling, and
-fails or requeues work according to whether a job had already been delivered.
+requeues or fails the in-flight job depending on the retry policy and attempts
+already made. Reconnection and retry scheduling are coordinator concerns; the
+worker loop never retries on its own.
+
+A worker may receive the same `(experiment_id, job_id)` more than once. Each
+attempt arrives as a normal `backtest_job` with a fresh `message_id`, and the
+worker should execute it normally; it must not assume that a `job_id` is seen at
+most once per connection.
 
 ## Lifecycle
 
@@ -68,10 +75,12 @@ Every received job produces exactly one reply. A `shutdown` produces no reply.
 | Worker could not produce a result for a readable job | `worker_error`, type `execution_error` |
 
 The distinction matters to the coordinator: an `invalid` result means the job
-itself was bad, so retrying it elsewhere will fail the same way. A `failed`
-result may be retryable on another worker. A `worker_error` means no
+itself was bad, so retrying it elsewhere will fail the same way and it is never
+retried. A `failed` result may be retryable on another worker when the
+coordinator's runtime-failure policy allows it. A `worker_error` means no
 `backtest_result` is available, either because the envelope could not be routed
-or because the worker failed outside a job result.
+or because the worker failed outside a job result; it is retryable while
+attempts remain.
 
 `duration_seconds` measures worker-side validation, data loading, and
 execution. It excludes queueing and transport time.
@@ -202,9 +211,10 @@ touches the wire.
 
 ## What is not here yet
 
-- Connection timeouts, automatic reconnection, and retry after a worker drops.
+- Connection timeouts and automatic reconnection.
 - Heartbeats and worker capacity advertisement.
-- Duplicate suppression by `message_id`.
+- Duplicate suppression by `message_id`; retries are bounded by the
+  coordinator, and a repeated job is executed again.
 - Multiple jobs in flight per worker.
 
 Those are transport and coordination concerns. The worker loop is deliberately

@@ -113,6 +113,41 @@ void test_running_can_fail() {
     );
 }
 
+void test_running_can_return_to_pending_for_retry() {
+    const std::vector<ExperimentJob> jobs = make_jobs(1);
+    JobStateTracker tracker(jobs);
+
+    tracker.mark_running(0);
+
+    const JobStateTransition retry = tracker.mark_pending(0);
+
+    expect(
+        retry.from == JobState::running,
+        "a running job can return to pending for a retry"
+    );
+    expect(retry.to == JobState::pending, "the retry must be pending");
+    expect(
+        tracker.state(0) == JobState::pending,
+        "the job must be dispatchable again"
+    );
+    expect(
+        !tracker.all_terminal(),
+        "a requeued job keeps the experiment active"
+    );
+
+    // A requeued job can run and complete on a later attempt.
+    const JobStateTransition again = tracker.mark_running(0);
+
+    expect(
+        again.from == JobState::pending,
+        "a retried job must start from pending"
+    );
+    expect(again.to == JobState::running, "the retry must be running");
+
+    tracker.mark_completed(0);
+    expect(tracker.all_terminal(), "the retried job must be terminal");
+}
+
 void test_pending_jobs_can_fail_without_running() {
     const std::vector<ExperimentJob> jobs = make_jobs(2);
     JobStateTracker tracker(jobs);
@@ -201,6 +236,19 @@ void test_invalid_transitions_are_rejected() {
         "pending -> completed must be rejected"
     );
 
+    bool pending_to_pending_threw = false;
+
+    try {
+        tracker.mark_pending(1);
+    } catch (const std::logic_error&) {
+        pending_to_pending_threw = true;
+    }
+
+    expect(
+        pending_to_pending_threw,
+        "pending -> pending must be rejected"
+    );
+
     tracker.mark_running(0);
     tracker.mark_completed(0);
 
@@ -215,6 +263,19 @@ void test_invalid_transitions_are_rejected() {
     expect(
         terminal_threw,
         "a terminal job must not transition again"
+    );
+
+    bool completed_to_pending_threw = false;
+
+    try {
+        tracker.mark_pending(0);
+    } catch (const std::logic_error&) {
+        completed_to_pending_threw = true;
+    }
+
+    expect(
+        completed_to_pending_threw,
+        "a terminal job must not return to pending"
     );
 
     bool range_threw = false;
@@ -254,6 +315,7 @@ int main() {
         test_initial_state_is_pending();
         test_pending_running_completed();
         test_running_can_fail();
+        test_running_can_return_to_pending_for_retry();
         test_pending_jobs_can_fail_without_running();
         test_fail_pending_marks_only_pending_jobs();
         test_invalid_transitions_are_rejected();

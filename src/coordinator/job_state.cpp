@@ -9,7 +9,8 @@ namespace {
 bool can_transition(JobState from, JobState to) {
     switch (to) {
     case JobState::pending:
-        return false;
+        // Only a running job can be returned to the queue for a retry.
+        return from == JobState::running;
 
     case JobState::running:
         return from == JobState::pending;
@@ -94,6 +95,10 @@ bool JobStateTracker::all_terminal() const {
 
 JobStateTransition JobStateTracker::mark_running(std::size_t index) {
     return transition(index, JobState::running);
+}
+
+JobStateTransition JobStateTracker::mark_pending(std::size_t index) {
+    return transition(index, JobState::pending);
 }
 
 JobStateTransition JobStateTracker::mark_completed(std::size_t index) {

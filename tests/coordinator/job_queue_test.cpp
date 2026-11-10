@@ -210,6 +210,49 @@ void test_requeue_front_returns_work() {
     );
 }
 
+void test_requeue_back_appends_retry() {
+    JobQueue queue;
+
+    queue.push(make_job(0));
+    queue.push(make_job(1));
+    queue.push(make_job(2));
+    queue.close();
+
+    const std::optional<QueuedJob> first = queue.pop();
+    expect(first.has_value(), "the queue must yield its first job");
+    expect(first->index == 0, "the first pop must be FIFO");
+
+    QueuedJob retry = std::move(*first);
+    retry.attempts = 1;
+    retry.message.message_id = "message-0-retry";
+
+    // Retries go to the back so other queued work keeps progressing.
+    queue.requeue_back(std::move(retry));
+
+    for (std::size_t expected : {std::size_t{1}, std::size_t{2}}) {
+        const std::optional<QueuedJob> next = queue.pop();
+        expect(next.has_value(), "queued work must remain available");
+        expect(
+            next->index == expected,
+            "a retry must not jump ahead of queued work"
+        );
+    }
+
+    const std::optional<QueuedJob> retried = queue.pop();
+    expect(retried.has_value(), "the retried job must remain available");
+    expect(retried->index == 0, "the retried job must be the last item");
+    expect(retried->attempts == 1, "the retry must keep its attempt count");
+    expect(
+        retried->message.message_id == "message-0-retry",
+        "the retry must keep its new correlation key"
+    );
+
+    expect(
+        !queue.pop().has_value(),
+        "the queue must be empty after every retry is consumed"
+    );
+}
+
 void test_concurrent_distribution() {
     constexpr std::size_t kJobCount = 200;
     constexpr std::size_t kConsumerCount = 8;
@@ -287,6 +330,7 @@ int main() {
         test_pop_for_times_out();
         test_pop_for_wakes_for_a_job();
         test_requeue_front_returns_work();
+        test_requeue_back_appends_retry();
         test_push_after_close_is_rejected();
         test_concurrent_distribution();
 

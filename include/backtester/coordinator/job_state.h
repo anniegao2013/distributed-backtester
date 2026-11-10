@@ -39,10 +39,12 @@ struct JobStateTransition {
 //
 //   pending -> running -> completed
 //                      -> failed
+//                      -> pending   (retryable attempt, job requeued)
 //   pending -> failed              (no worker was available)
 //
-// Terminal states are final. Invalid indexes or transitions throw
-// std::out_of_range / std::logic_error.
+// A running job returns to pending only when its failure is retryable and it
+// still has attempts left. Terminal states are final. Invalid indexes or
+// transitions throw std::out_of_range / std::logic_error.
 class JobStateTracker {
 public:
     explicit JobStateTracker(const std::vector<ExperimentJob>& jobs);
@@ -58,6 +60,11 @@ public:
     bool all_terminal() const;
 
     JobStateTransition mark_running(std::size_t index);
+
+    // Moves a running job back to pending so it can be dispatched again.
+    // Used only when a retryable attempt failed and attempts remain.
+    JobStateTransition mark_pending(std::size_t index);
+
     JobStateTransition mark_completed(std::size_t index);
     JobStateTransition mark_failed(std::size_t index);
 
