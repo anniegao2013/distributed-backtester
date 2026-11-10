@@ -42,7 +42,7 @@ bool ExperimentResultCollector::complete() const {
     return terminal_count_ == jobs_.size();
 }
 
-void ExperimentResultCollector::record(
+bool ExperimentResultCollector::record(
     std::size_t index,
     ExperimentJobOutcome outcome
 ) {
@@ -56,11 +56,11 @@ void ExperimentResultCollector::record(
             );
         }
 
+        // Terminal states are final. A repeated submission is a duplicate, not
+        // an error: ignore it so callers can process every reply they receive
+        // without having to coordinate who wins the race.
         if (outcomes_[index]) {
-            throw std::logic_error(
-                "job index " + std::to_string(index) +
-                " already has a terminal outcome"
-            );
+            return false;
         }
 
         outcomes_[index] = std::move(outcome);
@@ -68,6 +68,7 @@ void ExperimentResultCollector::record(
     }
 
     condition_.notify_all();
+    return true;
 }
 
 std::size_t ExperimentResultCollector::fail_remaining(

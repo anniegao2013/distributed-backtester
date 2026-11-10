@@ -135,21 +135,25 @@ void test_wait_blocks_until_every_job_is_terminal() {
     );
 }
 
-void test_duplicate_and_out_of_range_records_are_rejected() {
+void test_duplicate_records_are_idempotent_and_range_is_rejected() {
     const std::vector<ExperimentJob> jobs = make_jobs(2);
     ExperimentResultCollector collector(jobs);
 
-    collector.record(0, completed_outcome(jobs[0]));
+    expect(
+        collector.record(0, completed_outcome(jobs[0])),
+        "the first result must be stored"
+    );
 
-    bool duplicate_threw = false;
-
-    try {
-        collector.record(0, completed_outcome(jobs[0]));
-    } catch (const std::logic_error&) {
-        duplicate_threw = true;
-    }
-
-    expect(duplicate_threw, "a duplicate result must be rejected");
+    // A duplicate must not overwrite the first outcome, advance the terminal
+    // count, or change what take() returns.
+    expect(
+        !collector.record(0, failed_outcome(jobs[0])),
+        "a duplicate result must be ignored"
+    );
+    expect(
+        collector.terminal_count() == 1,
+        "a duplicate must not advance the terminal count"
+    );
 
     bool range_threw = false;
 
@@ -160,6 +164,19 @@ void test_duplicate_and_out_of_range_records_are_rejected() {
     }
 
     expect(range_threw, "an invalid job index must be rejected");
+
+    expect(
+        collector.record(1, failed_outcome(jobs[1])),
+        "a different pending job must still be recorded"
+    );
+
+    const std::vector<ExperimentJobOutcome> outcomes = collector.take();
+
+    expect(
+        outcomes[0].ok,
+        "the first terminal outcome must win over a duplicate"
+    );
+    expect(!outcomes[1].ok, "the second job must keep its own outcome");
 }
 
 void test_take_requires_a_terminal_state_for_every_job() {
@@ -318,7 +335,7 @@ int main() {
     try {
         test_out_of_order_results_are_returned_in_request_order();
         test_wait_blocks_until_every_job_is_terminal();
-        test_duplicate_and_out_of_range_records_are_rejected();
+        test_duplicate_records_are_idempotent_and_range_is_rejected();
         test_take_requires_a_terminal_state_for_every_job();
         test_fail_remaining_terminates_only_pending_jobs();
         test_fail_remaining_can_explain_each_job();

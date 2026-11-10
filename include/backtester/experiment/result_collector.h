@@ -39,9 +39,13 @@ public:
     // True once terminal_count() == size().
     bool complete() const;
 
-    // Records the terminal outcome for jobs[index]. Throws std::out_of_range
-    // for an invalid index and std::logic_error if that job already terminated.
-    void record(std::size_t index, ExperimentJobOutcome outcome);
+    // Records the terminal outcome for jobs[index]. The first terminal outcome
+    // wins: recording again for a job that already terminated is an idempotent
+    // no-op, so a duplicate submission cannot overwrite a result or advance the
+    // terminal count twice. Returns true when the outcome was stored and false
+    // when it was ignored as a duplicate. Throws std::out_of_range for an
+    // invalid index.
+    bool record(std::size_t index, ExperimentJobOutcome outcome);
 
     // Marks every still-pending job as failed with `error`. This terminates
     // jobs that no execution backend is left to run, such as jobs still queued

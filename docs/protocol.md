@@ -72,11 +72,14 @@ Every message has these top-level fields:
 correlation key, not the job identity: the coordinator may retry the same job
 with a new `message_id`, or reuse it so a worker can cache and deduplicate the
 reply. The built-in coordinator uses a fresh key for every attempt so a late
-reply cannot be mistaken for the current one. `job_id` is deterministic within
-an experiment (`ma-1`, `ma-2`, ...) but is not globally unique, so use
-`(experiment_id, job_id)` for reporting and `message_id` for wire correlation.
-A worker must therefore treat two jobs with the same `(experiment_id, job_id)`
-but different `message_id` values as two separate attempts.
+reply cannot be mistaken for the current one. It also remembers the
+`message_id` of every handled attempt and ignores a repeated result or error
+that reuses one of those IDs; the first submission wins. `job_id` is
+deterministic within an experiment (`ma-1`, `ma-2`, ...) but is not globally
+unique, so use `(experiment_id, job_id)` for reporting and `message_id` for wire
+correlation. A worker must therefore treat two jobs with the same
+`(experiment_id, job_id)` but different `message_id` values as two separate
+attempts.
 
 ## `worker_ready`
 
@@ -332,7 +335,10 @@ The coordinator treats a `worker_error` as a failed attempt for the current job.
 It keeps the connection open because a protocol or execution error may be
 specific to one job. If the job still has attempts remaining, the coordinator
 requeues it with a new `message_id`; otherwise the error becomes the job's
-terminal failure. It never records the same job twice.
+terminal failure. It never records the same job twice. If an error repeats a
+`message_id` the coordinator has already handled, it is ignored as a duplicate;
+an error without a `message_id` is attributed to the attempt currently in
+flight because it cannot be correlated.
 
 `protocol_error` is the previous name of this message. It remains valid input,
 and an error parsed under that name is serialized as `worker_error`.
@@ -404,13 +410,16 @@ stops responding is not detected without a job timeout.
 Retries are coordinator-local: the wire messages are unchanged. Each attempt is
 a normal `backtest_job` with a new `message_id`; the worker does not need to
 know whether it is running a job for the first time. The coordinator bounds
-attempts and never records more than one terminal outcome per request job.
+attempts, suppresses repeated result/error submissions by `message_id`, and
+never records more than one terminal outcome per request job.
 
 Not yet implemented in version 1:
 
-- job timeouts and duplicate suppression by `message_id`;
+- job timeouts;
 - reconnection after a worker drops;
 - heartbeat-based liveness for a connected but unresponsive worker;
+- worker-side caching or deduplication of repeated jobs (an intentional retry
+  executes again under a new `message_id`);
 - authentication and encryption.
 
 ## C++ usage

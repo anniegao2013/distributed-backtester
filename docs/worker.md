@@ -110,9 +110,9 @@ using WorkerTransport = comm::MessageChannel;
 `receive()` returns exactly one complete JSON document and `send()` accepts
 exactly one. The worker calls `send()` once with `worker_ready` before the first
 `receive()`. Framing, connection lifecycle, retries, and duplicate suppression
-belong to the implementation, not the loop. `run_worker()` lets transport
-exceptions propagate, so a broken connection terminates the process with a
-non-zero exit code instead of silently dropping work.
+belong to the transport or coordinator, not the loop. `run_worker()` lets
+transport exceptions propagate, so a broken connection terminates the process
+with a non-zero exit code instead of silently dropping work.
 
 ### TCP transport
 

@@ -188,6 +188,7 @@ Job timeouts and OS keepalive tuning are separate concerns.
 | Worker closes before a job is sent | Job returns to the front of the queue without consuming an attempt; worker is removed |
 | Worker closes while running a job, or a reply cannot be parsed | Job returns to the queue when attempts remain, otherwise it is marked failed; that worker stops pulling jobs and the remaining queue stays available |
 | Attempt limit reached | Job is terminal as failed with the last attempt's error |
+| A result or error repeats a handled `message_id` | Ignored; the first outcome, state, and attempt count are unchanged and `duplicate_results` increments |
 | Every worker fails before finishing the queue | Pending jobs fail with `job was not dispatched to a worker`, or with the no-worker-remained message if they had already been attempted |
 
 Per-job strategy and data failures do not abort the run. Startup problems, such
@@ -210,11 +211,23 @@ recorded, so each job still contributes exactly one terminal outcome. The run
 waits until every job is terminal, so a mix of successes and failures always
 produces one complete response document.
 
+Result submission is idempotent. The coordinator records the `message_id` of
+every attempt it has handled and ignores any later `backtest_result` or
+`worker_error` that reuses one of those IDs. This matters because the
+coordinator reads one reply per dispatch: without suppression, a duplicate left
+in the socket would be consumed as the reply to the worker's next job. An
+ignored duplicate is never recorded, never advances a job state, never consumes
+an attempt, and does not count toward `results_received` or `worker_errors`; it
+only increments `duplicate_results`. A reply with an unknown `message_id` is
+still a correlation error and loses the worker. The collector also keeps the
+first terminal outcome if two paths reach it for the same job.
+
 If every worker stops while jobs are still queued, the coordinator marks those
 jobs failed before completing. This is the only point where the coordinator
 synthesizes outcomes; it never waits for work that no connected worker can
 perform. The text summary adds a `Job retries: N` line when at least one retry
-dispatch occurred.
+dispatch occurred and a `Duplicate results ignored: N` line when at least one
+duplicate was suppressed.
 
 Results are aggregated by the same `build_experiment_result()` helper used by
 local runs. The returned `ExperimentResult` contains:
@@ -263,6 +276,7 @@ const ExperimentResult result =
 // stats.job_states holds the final state per request job.
 // stats.job_attempts holds the delivery count per request job.
 // stats.job_retries counts deliveries after the first across the run.
+// stats.duplicate_results counts ignored repeat submissions.
 // stats.workers_disconnected counts workers lost during the run.
 ```
 
@@ -270,8 +284,8 @@ const ExperimentResult result =
 after the listening socket is bound and before the first accept, which is
 useful for tests that bind port `0` and need the actual port. `CoordinatorStats`
 reports registered workers, dispatched jobs, received results, worker errors,
-transport failures, lost workers, retry counts, per-job attempt counts, and the
-final coordinator-owned job state table.
+transport failures, lost workers, retry counts, duplicate submissions, per-job
+attempt counts, and the final coordinator-owned job state table.
 
 `max_job_attempts` must be at least 1; an invalid policy is rejected with
 `std::invalid_argument` before the listening socket is bound.
@@ -282,8 +296,9 @@ final coordinator-owned job state table.
 - No job timeout or worker reconnection. Retries are bounded reassignments
   within the current run, not recovery of a permanently failed worker.
 - A job that is retried after a lost reply may run twice. Backtests are
-  read-only, so the coordinator accepts the duplicate work rather than
-  implementing deduplication.
+  read-only, so the coordinator accepts the duplicate work. Duplicate
+  *submissions* are suppressed by `message_id`, but a retry intentionally uses
+  a new ID and therefore runs again.
 - A worker that stays connected but hangs is not detected without a job
   timeout.
 - A worker must see the dataset at the same path as the coordinator.

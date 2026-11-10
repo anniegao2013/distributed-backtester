@@ -19,6 +19,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <sys/resource.h>
@@ -279,6 +280,29 @@ struct SharedState {
     std::atomic<std::size_t> transport_failures{0};
     std::atomic<std::size_t> workers_disconnected{0};
     std::atomic<std::size_t> job_retries{0};
+    std::atomic<std::size_t> duplicate_results{0};
+};
+
+// Tracks the message_id of every attempt whose reply has been handled. The
+// coordinator reads exactly one message per dispatch, so a worker that submits
+// the same result twice would otherwise have the extra copy consumed as the
+// response to its next job. Replies are keyed by message_id because it is the
+// wire correlation key and is unique per attempt within a run.
+class AttemptLedger {
+public:
+    bool handled(const std::string& message_id) const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return handled_.count(message_id) > 0;
+    }
+
+    void mark_handled(const std::string& message_id) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        handled_.insert(message_id);
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::unordered_set<std::string> handled_;
 };
 
 // Thread-safe attempt counter indexed by request order. The queue also carries
@@ -356,80 +380,125 @@ AttemptResult receive_result(
     WorkerConnection& worker,
     const BacktestJobMessage& job,
     SharedState& shared,
-    bool retry_failed_results
+    bool retry_failed_results,
+    AttemptLedger& ledger,
+    Logger& logger
 ) {
-    const std::optional<std::string> reply = worker.channel.receive();
+    for (;;) {
+        const std::optional<std::string> reply = worker.channel.receive();
 
-    if (!reply) {
-        throw std::runtime_error(
-            "connection closed before a result was received"
-        );
-    }
-
-    const ProtocolEnvelope envelope = parse_protocol_envelope(*reply);
-
-    if (envelope.protocol_version != kBacktestProtocolVersion) {
-        throw std::runtime_error(
-            "Worker '" + worker.worker_id +
-            "' replied with unsupported protocol_version " +
-            std::to_string(envelope.protocol_version)
-        );
-    }
-
-    if (envelope.type == "backtest_result") {
-        const BacktestResultMessage message =
-            parse_backtest_result_json(*reply);
-
-        if (message.message_id != job.message_id) {
+        if (!reply) {
             throw std::runtime_error(
-                "Worker '" + worker.worker_id +
-                "' replied to message_id '" + message.message_id +
-                "' while running '" + job.message_id + "'"
+                "connection closed before a result was received"
             );
         }
 
-        shared.results_received.fetch_add(1);
+        const ProtocolEnvelope envelope = parse_protocol_envelope(*reply);
 
-        // "invalid" is deterministic worker-side validation and never
-        // benefits from another attempt. "failed" is a runtime failure that
-        // may be specific to one worker, so it is retryable when enabled.
-        const bool retryable =
-            message.result.status == "failed" && retry_failed_results;
+        if (envelope.protocol_version != kBacktestProtocolVersion) {
+            throw std::runtime_error(
+                "Worker '" + worker.worker_id +
+                "' replied with unsupported protocol_version " +
+                std::to_string(envelope.protocol_version)
+            );
+        }
 
-        return AttemptResult{
-            result_to_outcome(job, message),
-            retryable
-        };
+        if (envelope.type == "backtest_result") {
+            const BacktestResultMessage message =
+                parse_backtest_result_json(*reply);
+
+            if (message.message_id != job.message_id) {
+                // A worker may send the same result more than once. The extra
+                // copy is sitting between attempts; ignore it instead of
+                // mistaking it for the current job's reply. Only an id the
+                // coordinator previously handled is a duplicate; an unknown id
+                // is still a correlation error.
+                if (ledger.handled(message.message_id)) {
+                    shared.duplicate_results.fetch_add(1);
+                    logger.log(
+                        "ignoring duplicate backtest_result for message_id '" +
+                        message.message_id + "' from worker '" +
+                        worker.worker_id + "'"
+                    );
+                    continue;
+                }
+
+                throw std::runtime_error(
+                    "Worker '" + worker.worker_id +
+                    "' replied to message_id '" + message.message_id +
+                    "' while running '" + job.message_id + "'"
+                );
+            }
+
+            ledger.mark_handled(job.message_id);
+            shared.results_received.fetch_add(1);
+
+            // "invalid" is deterministic worker-side validation and never
+            // benefits from another attempt. "failed" is a runtime failure
+            // that may be specific to one worker, so it is retryable when
+            // enabled.
+            const bool retryable =
+                message.result.status == "failed" && retry_failed_results;
+
+            return AttemptResult{
+                result_to_outcome(job, message),
+                retryable
+            };
+        }
+
+        if (envelope.type == "worker_error" ||
+            envelope.type == "protocol_error") {
+            const WorkerErrorMessage message =
+                parse_worker_error_json(*reply);
+
+            // worker_error may omit message_id when the worker could not even
+            // parse the envelope. Such an uncorrelated error can only belong
+            // to the attempt currently in flight.
+            if (!message.message_id.empty() &&
+                message.message_id != job.message_id) {
+                if (ledger.handled(message.message_id)) {
+                    shared.duplicate_results.fetch_add(1);
+                    logger.log(
+                        "ignoring duplicate " + envelope.type +
+                        " for message_id '" + message.message_id +
+                        "' from worker '" + worker.worker_id + "'"
+                    );
+                    continue;
+                }
+
+                throw std::runtime_error(
+                    "Worker '" + worker.worker_id +
+                    "' replied to message_id '" + message.message_id +
+                    "' while running '" + job.message_id + "'"
+                );
+            }
+
+            ledger.mark_handled(job.message_id);
+            shared.worker_errors.fetch_add(1);
+
+            ExperimentJobOutcome outcome;
+            outcome.job = {
+                job.job.job_id,
+                job.job.strategy_id,
+                job.job.strategy_type,
+                job.job.parameters
+            };
+            outcome.error = message.error.message.empty()
+                ? "Worker '" + worker.worker_id + "' reported " +
+                      message.error.type
+                : message.error.message;
+
+            // A worker_error means no backtest_result is available for this
+            // attempt. The job itself remains valid, so another worker can run
+            // it.
+            return AttemptResult{std::move(outcome), /*retryable=*/true};
+        }
+
+        throw std::runtime_error(
+            "Worker '" + worker.worker_id +
+            "' replied with unexpected message type '" + envelope.type + "'"
+        );
     }
-
-    if (envelope.type == "worker_error" ||
-        envelope.type == "protocol_error") {
-        const WorkerErrorMessage message =
-            parse_worker_error_json(*reply);
-
-        shared.worker_errors.fetch_add(1);
-
-        ExperimentJobOutcome outcome;
-        outcome.job = {
-            job.job.job_id,
-            job.job.strategy_id,
-            job.job.strategy_type,
-            job.job.parameters
-        };
-        outcome.error = message.error.message.empty()
-            ? "Worker '" + worker.worker_id + "' reported " +
-                  message.error.type
-            : message.error.message;
-
-        // A worker_error means no backtest_result is available for this
-        // attempt. The job itself remains valid, so another worker can run it.
-        return AttemptResult{std::move(outcome), /*retryable=*/true};
-    }
-
-    throw std::runtime_error(
-        "Worker '" + worker.worker_id +
-        "' replied with unexpected message type '" + envelope.type + "'"
-    );
 }
 
 // Records a lost worker exactly once and notifies observers. The worker is
@@ -514,6 +583,7 @@ void worker_loop(
     ExperimentResultCollector& results,
     SharedState& shared,
     AttemptTracker& attempts,
+    AttemptLedger& ledger,
     const CoordinatorConfig& config,
     JobGate& gate,
     Logger& logger
@@ -617,7 +687,9 @@ void worker_loop(
                     worker,
                     queued->message,
                     shared,
-                    config.retry_failed_results
+                    config.retry_failed_results,
+                    ledger,
+                    logger
                 );
 
             const bool completed = attempt.outcome.ok;
@@ -645,13 +717,23 @@ void worker_loop(
             }
 
             // The outcome is terminal: the attempt succeeded, the failure is
-            // non-retryable, or the attempt limit has been reached.
-            results.record(index, std::move(attempt.outcome));
-            state_observer.publish(
-                completed
-                    ? states.mark_completed(index)
-                    : states.mark_failed(index)
-            );
+            // non-retryable, or the attempt limit has been reached. The
+            // collector keeps the first outcome if a duplicate slips through
+            // some other path, so never publish a second terminal transition.
+            if (results.record(index, std::move(attempt.outcome))) {
+                state_observer.publish(
+                    completed
+                        ? states.mark_completed(index)
+                        : states.mark_failed(index)
+                );
+            } else {
+                shared.duplicate_results.fetch_add(1);
+                logger.log(
+                    "ignoring duplicate terminal outcome for job '" +
+                    job_id + "'"
+                );
+            }
+
             gate.release();
         } catch (const std::exception& error) {
             // The job was delivered but its reply is gone, or the reply could
@@ -668,11 +750,14 @@ void worker_loop(
             );
 
             if (!retry_scheduled) {
-                results.record(
-                    index,
-                    failed_outcome(queued->message.job, error.what())
-                );
-                state_observer.publish(states.mark_failed(index));
+                if (results.record(
+                        index,
+                        failed_outcome(queued->message.job, error.what())
+                    )) {
+                    state_observer.publish(states.mark_failed(index));
+                } else {
+                    shared.duplicate_results.fetch_add(1);
+                }
             }
 
             gate.release();
@@ -840,6 +925,7 @@ ExperimentResult run_distributed_experiment(
     JobStateObserver state_observer(config);
     WorkerDisconnectObserver disconnect_observer(config);
     AttemptTracker attempts(request.jobs.size());
+    AttemptLedger ledger;
 
     ExperimentResultCollector results(request.jobs);
 
@@ -873,6 +959,7 @@ ExperimentResult run_distributed_experiment(
             std::ref(results),
             std::ref(shared),
             std::ref(attempts),
+            std::ref(ledger),
             std::ref(config),
             std::ref(gate),
             std::ref(logger)
@@ -974,6 +1061,7 @@ ExperimentResult run_distributed_experiment(
         stats->worker_errors = shared.worker_errors.load();
         stats->transport_failures = shared.transport_failures.load();
         stats->workers_disconnected = shared.workers_disconnected.load();
+        stats->duplicate_results = shared.duplicate_results.load();
         stats->job_retries = shared.job_retries.load();
         stats->job_attempts = attempts.snapshot();
         stats->job_states = states.snapshot();

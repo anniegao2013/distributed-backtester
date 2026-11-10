@@ -225,6 +225,11 @@ void print_result(
         std::cout << "Job retries: " << stats.job_retries << '\n';
     }
 
+    if (stats.duplicate_results > 0) {
+        std::cout << "Duplicate results ignored: "
+                  << stats.duplicate_results << '\n';
+    }
+
     std::cout << "Jobs completed: " << result.summary.jobs_completed
               << " of " << result.summary.jobs_total << '\n';
     std::cout << std::fixed << std::setprecision(4);

@@ -99,6 +99,11 @@ struct CoordinatorStats {
     // attempts remain, and queued work is offered to the remaining workers.
     std::size_t workers_disconnected = 0;
 
+    // Number of result or error messages ignored because their message_id had
+    // already been handled. Duplicates never change a job outcome, advance a
+    // state, or count as a received result.
+    std::size_t duplicate_results = 0;
+
     // Number of dispatch attempts after the first, across all jobs. A job that
     // is requeued but never retried because every worker has gone is not
     // counted here.

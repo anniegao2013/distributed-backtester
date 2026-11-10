@@ -245,6 +245,14 @@ add_backtester_test(
 # Real sockets and retries; bound the runtime if a retry loop regresses.
 set_tests_properties(coordinator_retry_test PROPERTIES TIMEOUT 30)
 
+add_backtester_test(
+    coordinator_duplicate_test
+    integration/coordinator_duplicate_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets; bound the runtime if duplicate suppression regresses.
+set_tests_properties(coordinator_duplicate_test PROPERTIES TIMEOUT 30)
+
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(
     backtester_end_to_end_test
