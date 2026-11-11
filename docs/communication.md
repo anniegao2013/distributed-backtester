@@ -78,10 +78,13 @@ keeps a single malformed length prefix from forcing an unbounded allocation.
 | `comm::TcpClientChannel` (aliased as `TcpTransport`) | Worker-side TCP client | Same as `TcpChannel` |
 | `StdioTransport` | Local development worker | One compact JSON document per line |
 
-`net::TcpSocket` performs the socket work and exposes `send_frame()` /
-`receive_frame()`. `comm::TcpChannel` adapts that to the `MessageChannel`
-contract. `TcpClientChannel` owns dialing and delegates to a `TcpChannel` after
-`connect()`.
+`net::TcpSocket` performs the socket work and exposes `send_frame()`,
+`receive_frame()`, and the non-blocking `peer_closed()` liveness check.
+`comm::TcpChannel` adapts that to the `MessageChannel` contract.
+`TcpClientChannel` owns dialing and delegates to a `TcpChannel` after
+`connect()`. `peer_closed()` uses `poll()` plus a non-blocking `MSG_PEEK`, so a
+closed or reset peer is visible without consuming a frame; pending data is not
+mistaken for a close.
 
 The worker's public `WorkerTransport` name is an alias of
 `comm::MessageChannel`, so existing worker code and tests use the shared
@@ -153,7 +156,8 @@ run_worker(transport, config);
 - JSON parsing and schema validation;
 - `message_id` correlation and duplicate suppression;
 - job assignment or worker registration;
-- retries, reconnection, heartbeats, and timeouts;
+- retry policy, reconnection, heartbeats, and timeout policy (a TCP channel
+  exposes a bounded receive, but the coordinator decides what a timeout means);
 - authentication and encryption.
 
 Those concerns are implemented in `protocol/`, `coordinator/`, and `worker/`.

@@ -42,7 +42,7 @@ bool ExperimentResultCollector::complete() const {
     return terminal_count_ == jobs_.size();
 }
 
-void ExperimentResultCollector::record(
+bool ExperimentResultCollector::record(
     std::size_t index,
     ExperimentJobOutcome outcome
 ) {
@@ -56,11 +56,11 @@ void ExperimentResultCollector::record(
             );
         }
 
+        // Terminal states are final. A repeated submission is a duplicate, not
+        // an error: ignore it so callers can process every reply they receive
+        // without having to coordinate who wins the race.
         if (outcomes_[index]) {
-            throw std::logic_error(
-                "job index " + std::to_string(index) +
-                " already has a terminal outcome"
-            );
+            return false;
         }
 
         outcomes_[index] = std::move(outcome);
@@ -68,10 +68,21 @@ void ExperimentResultCollector::record(
     }
 
     condition_.notify_all();
+    return true;
 }
 
 std::size_t ExperimentResultCollector::fail_remaining(
     const std::string& error
+) {
+    return fail_remaining(
+        [&error](std::size_t) {
+            return error;
+        }
+    );
+}
+
+std::size_t ExperimentResultCollector::fail_remaining(
+    const std::function<std::string(std::size_t)>& error_for_index
 ) {
     std::size_t marked = 0;
 
@@ -83,7 +94,10 @@ std::size_t ExperimentResultCollector::fail_remaining(
                 continue;
             }
 
-            outcomes_[i] = failed_outcome(jobs_[i], error);
+            outcomes_[i] = failed_outcome(
+                jobs_[i],
+                error_for_index(i)
+            );
             ++terminal_count_;
             ++marked;
         }
@@ -94,6 +108,12 @@ std::size_t ExperimentResultCollector::fail_remaining(
     }
 
     return marked;
+}
+
+std::vector<std::optional<ExperimentJobOutcome>>
+ExperimentResultCollector::snapshot() const {
+    std::lock_guard<std::mutex> lock(mutex_);
+    return outcomes_;
 }
 
 void ExperimentResultCollector::wait() const {

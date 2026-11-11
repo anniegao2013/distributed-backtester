@@ -3,6 +3,7 @@
 #include "comm/message_channel.h"
 #include "net/tcp.h"
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -24,7 +25,18 @@ public:
 
     bool connected() const noexcept;
 
+    // Non-blocking liveness check. Returns true when the peer has closed or
+    // reset the connection, or when the socket is no longer usable.
+    bool peer_closed() const noexcept;
+
     std::optional<std::string> receive() override;
+
+    // Like receive(), but the document must arrive within `timeout`. Throws
+    // net::TimeoutError when the deadline passes.
+    std::optional<std::string> receive_for(
+        std::chrono::milliseconds timeout
+    );
+
     void send(const std::string& message) override;
     void close() override;
 

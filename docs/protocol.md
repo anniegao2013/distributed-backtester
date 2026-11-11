@@ -39,9 +39,10 @@ experiment request
   -> coordinator expands strategies into jobs
   -> workers connect independently and each sends one worker_ready
   -> coordinator accepts the configured number of workers
-  -> one backtest_job per job, each with a unique message_id
+  -> one backtest_job per attempt, each with a unique message_id
   -> worker validates and runs the backtest
-  -> one backtest_result per job, echoing message_id
+  -> one backtest_result per attempt, echoing message_id
+  -> coordinator retries a retryable attempt with a new message_id
   -> coordinator assigns the next job to that worker
   -> coordinator aggregates results into the experiment response
   -> coordinator sends one shutdown when the run is complete
@@ -70,9 +71,15 @@ Every message has these top-level fields:
 `message_id` is chosen by the sender and echoed by the receiver. It is the
 correlation key, not the job identity: the coordinator may retry the same job
 with a new `message_id`, or reuse it so a worker can cache and deduplicate the
-reply. `job_id` is deterministic within an experiment (`ma-1`, `ma-2`, ...) but
-is not globally unique, so use `(experiment_id, job_id)` for reporting and
-`message_id` for wire correlation.
+reply. The built-in coordinator uses a fresh key for every attempt so a late
+reply cannot be mistaken for the current one. It also remembers the
+`message_id` of every handled attempt and ignores a repeated result or error
+that reuses one of those IDs; the first submission wins. `job_id` is
+deterministic within an experiment (`ma-1`, `ma-2`, ...) but is not globally
+unique, so use `(experiment_id, job_id)` for reporting and `message_id` for wire
+correlation. A worker must therefore treat two jobs with the same
+`(experiment_id, job_id)` but different `message_id` values as two separate
+attempts.
 
 ## `worker_ready`
 
@@ -326,7 +333,12 @@ Per-job strategy and data failures still use `backtest_result` with status
 
 The coordinator treats a `worker_error` as a failed attempt for the current job.
 It keeps the connection open because a protocol or execution error may be
-specific to one job, but it records the failure in the aggregate result.
+specific to one job. If the job still has attempts remaining, the coordinator
+requeues it with a new `message_id`; otherwise the error becomes the job's
+terminal failure. It never records the same job twice. If an error repeats a
+`message_id` the coordinator has already handled, it is ignored as a duplicate;
+an error without a `message_id` is attributed to the attempt currently in
+flight because it cannot be correlated.
 
 `protocol_error` is the previous name of this message. It remains valid input,
 and an error parsed under that name is serialized as `worker_error`.
@@ -388,10 +400,39 @@ The transport owns concerns that are deliberately not in the message:
 - bounded in-flight jobs and dynamic assignment to available workers;
 - logging and metrics around network and execution time.
 
+The coordinator treats a closed or reset connection as a lost worker. It stops
+scheduling that worker, returns undelivered work to the queue, and either
+requeues the in-flight job (when attempts remain) or marks it failed. It then
+continues with the remaining workers. This detects process crashes and
+disconnects. The protocol has no heartbeat, but the coordinator can bound a
+dispatched job's reply with its local job timeout; on expiry it treats the worker
+as lost and applies the same retry or failure rules.
+
+Retries are coordinator-local: the wire messages are unchanged. Each attempt is
+a normal `backtest_job` with a new `message_id`; the worker does not need to
+know whether it is running a job for the first time. The coordinator bounds
+attempts, suppresses repeated result/error submissions by `message_id`, and
+never records more than one terminal outcome per request job.
+
+Coordinator crash recovery is also coordinator-local and does not change the
+protocol. With `--state PATH`, the coordinator stores job states, attempt
+counts, and terminal outcomes in a JSON file. On restart it reuses terminal
+outcomes, requeues jobs that were running, and regenerates `message_id` values
+for resumed attempts. Workers see ordinary `backtest_job` messages and cannot
+tell whether an attempt is new, retried, or resumed after a restart.
+
+Job timeouts are coordinator-local as well. The worker is not told that its
+attempt was abandoned, and the wire messages do not change. A timed-out worker
+is removed from scheduling; a result or error it sends later is ignored because
+the coordinator no longer reads that connection.
+
 Not yet implemented in version 1:
 
-- timeouts, automatic retry, and duplicate suppression by `message_id`;
 - reconnection after a worker drops;
+- heartbeat-based liveness for a connected but unresponsive worker (a timeout
+  only covers a worker with a job in flight);
+- worker-side caching or deduplication of repeated jobs (an intentional retry
+  executes again under a new `message_id`);
 - authentication and encryption.
 
 ## C++ usage

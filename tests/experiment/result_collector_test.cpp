@@ -21,6 +21,25 @@ void expect(bool condition, const std::string& message) {
     }
 }
 
+// Joins a thread during stack unwinding so a failed assertion reports the
+// failure instead of terminating the process on a joinable std::thread.
+class ThreadJoiner {
+public:
+    explicit ThreadJoiner(std::thread& thread) : thread_(thread) {}
+
+    ~ThreadJoiner() {
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+    ThreadJoiner(const ThreadJoiner&) = delete;
+    ThreadJoiner& operator=(const ThreadJoiner&) = delete;
+
+private:
+    std::thread& thread_;
+};
+
 ExperimentJob make_job(std::size_t index) {
     ExperimentJob job;
     job.job_id = "job-" + std::to_string(index);
@@ -110,19 +129,21 @@ void test_wait_blocks_until_every_job_is_terminal() {
 
     std::promise<void> started;
     std::future<void> ready = started.get_future();
-    std::atomic<bool> finished{false};
+    std::promise<void> finished_promise;
+    std::future<void> finished = finished_promise.get_future();
 
     std::thread waiter([&] {
         started.set_value();
         collector.wait();
-        finished.store(true);
+        finished_promise.set_value();
     });
+    ThreadJoiner waiter_joiner(waiter);
 
     ready.wait();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     expect(
-        !finished.load(),
+        finished.wait_for(std::chrono::milliseconds(50)) ==
+            std::future_status::timeout,
         "wait must block while any job is still pending"
     );
 
@@ -130,26 +151,31 @@ void test_wait_blocks_until_every_job_is_terminal() {
     waiter.join();
 
     expect(
-        finished.load(),
+        finished.wait_for(std::chrono::milliseconds(0)) ==
+            std::future_status::ready,
         "wait must return once the final job becomes terminal"
     );
 }
 
-void test_duplicate_and_out_of_range_records_are_rejected() {
+void test_duplicate_records_are_idempotent_and_range_is_rejected() {
     const std::vector<ExperimentJob> jobs = make_jobs(2);
     ExperimentResultCollector collector(jobs);
 
-    collector.record(0, completed_outcome(jobs[0]));
+    expect(
+        collector.record(0, completed_outcome(jobs[0])),
+        "the first result must be stored"
+    );
 
-    bool duplicate_threw = false;
-
-    try {
-        collector.record(0, completed_outcome(jobs[0]));
-    } catch (const std::logic_error&) {
-        duplicate_threw = true;
-    }
-
-    expect(duplicate_threw, "a duplicate result must be rejected");
+    // A duplicate must not overwrite the first outcome, advance the terminal
+    // count, or change what take() returns.
+    expect(
+        !collector.record(0, failed_outcome(jobs[0])),
+        "a duplicate result must be ignored"
+    );
+    expect(
+        collector.terminal_count() == 1,
+        "a duplicate must not advance the terminal count"
+    );
 
     bool range_threw = false;
 
@@ -160,6 +186,19 @@ void test_duplicate_and_out_of_range_records_are_rejected() {
     }
 
     expect(range_threw, "an invalid job index must be rejected");
+
+    expect(
+        collector.record(1, failed_outcome(jobs[1])),
+        "a different pending job must still be recorded"
+    );
+
+    const std::vector<ExperimentJobOutcome> outcomes = collector.take();
+
+    expect(
+        outcomes[0].ok,
+        "the first terminal outcome must win over a duplicate"
+    );
+    expect(!outcomes[1].ok, "the second job must keep its own outcome");
 }
 
 void test_take_requires_a_terminal_state_for_every_job() {
@@ -218,6 +257,33 @@ void test_fail_remaining_terminates_only_pending_jobs() {
     expect(outcomes[1].ok, "a completed job must not be overwritten");
     expect(outcomes[2].job.job_id == jobs[2].job_id, "job 2 must be kept");
     expect(!outcomes[2].ok, "a pending job must fail");
+}
+
+void test_fail_remaining_can_explain_each_job() {
+    const std::vector<ExperimentJob> jobs = make_jobs(3);
+    ExperimentResultCollector collector(jobs);
+
+    collector.record(1, completed_outcome(jobs[1]));
+
+    const std::size_t marked = collector.fail_remaining(
+        [](std::size_t index) {
+            return "job " + std::to_string(index) + " was abandoned";
+        }
+    );
+
+    expect(marked == 2, "the callback form must mark every pending job");
+
+    const std::vector<ExperimentJobOutcome> outcomes = collector.take();
+
+    expect(
+        outcomes[0].error == "job 0 was abandoned",
+        "the callback message must use the request index"
+    );
+    expect(outcomes[1].ok, "a completed job must not be overwritten");
+    expect(
+        outcomes[2].error == "job 2 was abandoned",
+        "each pending job must receive its own message"
+    );
 }
 
 void test_concurrent_recording_preserves_every_job() {
@@ -291,9 +357,10 @@ int main() {
     try {
         test_out_of_order_results_are_returned_in_request_order();
         test_wait_blocks_until_every_job_is_terminal();
-        test_duplicate_and_out_of_range_records_are_rejected();
+        test_duplicate_records_are_idempotent_and_range_is_rejected();
         test_take_requires_a_terminal_state_for_every_job();
         test_fail_remaining_terminates_only_pending_jobs();
+        test_fail_remaining_can_explain_each_job();
         test_concurrent_recording_preserves_every_job();
 
         std::cout << "result_collector_tests passed\n";

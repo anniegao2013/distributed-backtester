@@ -9,7 +9,8 @@ namespace {
 bool can_transition(JobState from, JobState to) {
     switch (to) {
     case JobState::pending:
-        return false;
+        // Only a running job can be returned to the queue for a retry.
+        return from == JobState::running;
 
     case JobState::running:
         return from == JobState::pending;
@@ -43,6 +44,23 @@ const char* job_state_name(JobState state) noexcept {
 
 JobStateTracker::JobStateTracker(const std::vector<ExperimentJob>& jobs)
     : states_(jobs.size(), JobState::pending) {
+    job_ids_.reserve(jobs.size());
+
+    for (const ExperimentJob& job : jobs) {
+        job_ids_.push_back(job.job_id);
+    }
+}
+
+JobStateTracker::JobStateTracker(
+    const std::vector<ExperimentJob>& jobs,
+    const std::vector<JobState>& initial_states
+) : states_(initial_states) {
+    if (initial_states.size() != jobs.size()) {
+        throw std::invalid_argument(
+            "Initial job state table must have one entry per job"
+        );
+    }
+
     job_ids_.reserve(jobs.size());
 
     for (const ExperimentJob& job : jobs) {
@@ -94,6 +112,10 @@ bool JobStateTracker::all_terminal() const {
 
 JobStateTransition JobStateTracker::mark_running(std::size_t index) {
     return transition(index, JobState::running);
+}
+
+JobStateTransition JobStateTracker::mark_pending(std::size_t index) {
+    return transition(index, JobState::pending);
 }
 
 JobStateTransition JobStateTracker::mark_completed(std::size_t index) {

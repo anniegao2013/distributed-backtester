@@ -15,6 +15,19 @@ Workers do not track job state. They report one result per job, and the
 coordinator is the single source of truth for whether that job is `running`,
 `completed`, or `failed`.
 
+A crashed or disconnected worker simply closes its TCP connection. The
+coordinator notices the closed socket, removes that worker from scheduling, and
+requeues or fails the in-flight job depending on the retry policy and attempts
+already made. Reconnection and retry scheduling are coordinator concerns; the
+worker loop never retries on its own.
+
+A worker may receive the same `(experiment_id, job_id)` more than once. Each
+attempt arrives as a normal `backtest_job` with a fresh `message_id`, and the
+worker should execute it normally; it must not assume that a `job_id` is seen at
+most once per connection. This includes attempts resumed after a coordinator
+restart: the coordinator may ask a worker to run a job that another worker had
+already started, because the earlier result was never recorded.
+
 ## Lifecycle
 
 The worker connects, announces readiness, then performs the steps below for
@@ -64,10 +77,12 @@ Every received job produces exactly one reply. A `shutdown` produces no reply.
 | Worker could not produce a result for a readable job | `worker_error`, type `execution_error` |
 
 The distinction matters to the coordinator: an `invalid` result means the job
-itself was bad, so retrying it elsewhere will fail the same way. A `failed`
-result may be retryable on another worker. A `worker_error` means no
+itself was bad, so retrying it elsewhere will fail the same way and it is never
+retried. A `failed` result may be retryable on another worker when the
+coordinator's runtime-failure policy allows it. A `worker_error` means no
 `backtest_result` is available, either because the envelope could not be routed
-or because the worker failed outside a job result.
+or because the worker failed outside a job result; it is retryable while
+attempts remain.
 
 `duration_seconds` measures worker-side validation, data loading, and
 execution. It excludes queueing and transport time.
@@ -97,9 +112,9 @@ using WorkerTransport = comm::MessageChannel;
 `receive()` returns exactly one complete JSON document and `send()` accepts
 exactly one. The worker calls `send()` once with `worker_ready` before the first
 `receive()`. Framing, connection lifecycle, retries, and duplicate suppression
-belong to the implementation, not the loop. `run_worker()` lets transport
-exceptions propagate, so a broken connection terminates the process with a
-non-zero exit code instead of silently dropping work.
+belong to the transport or coordinator, not the loop. `run_worker()` lets
+transport exceptions propagate, so a broken connection terminates the process
+with a non-zero exit code instead of silently dropping work.
 
 ### TCP transport
 
@@ -198,9 +213,13 @@ touches the wire.
 
 ## What is not here yet
 
-- Connection timeouts, automatic reconnection, and retry after a worker drops.
+- Connection timeouts and automatic reconnection.
+- Job cancellation: the coordinator may abandon an attempt after its local job
+  timeout, but the worker keeps computing and is not told to stop.
 - Heartbeats and worker capacity advertisement.
-- Duplicate suppression by `message_id`.
+- Duplicate suppression by `message_id` on the worker; the coordinator suppresses
+  duplicate *submissions*, and a repeated job is executed again.
+- Worker-side persistence or recovery; job state belongs to the coordinator.
 - Multiple jobs in flight per worker.
 
 Those are transport and coordination concerns. The worker loop is deliberately

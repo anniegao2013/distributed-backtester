@@ -77,6 +77,7 @@ add_library(backtester_core
     src/coordinator/coordinator.cpp
     src/coordinator/job_queue.cpp
     src/coordinator/job_state.cpp
+    src/coordinator/persistent_state.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -196,6 +197,9 @@ add_backtester_test(protocol_tests protocol/protocol_test.cpp)
 # Coordinator scheduling
 add_backtester_test(job_queue_tests coordinator/job_queue_test.cpp)
 add_backtester_test(job_state_tests coordinator/job_state_test.cpp)
+add_backtester_test(
+    persistent_state_tests coordinator/persistent_state_test.cpp
+)
 
 # Worker loop, job execution, and development transport
 add_backtester_test(
@@ -223,11 +227,64 @@ add_backtester_test(
     integration/coordinator_tcp_test.cpp
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+# Real sockets; bound the runtime if the accept or dispatch loop regresses.
+set_tests_properties(coordinator_tcp_test PROPERTIES TIMEOUT 30)
+
 add_backtester_test(
     coordinator_failure_test
     integration/coordinator_failure_test.cpp
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+# Real sockets; bound the runtime if failure handling regresses.
+set_tests_properties(coordinator_failure_test PROPERTIES TIMEOUT 30)
+add_backtester_test(
+    coordinator_disconnect_test
+    integration/coordinator_disconnect_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# This test uses real sockets and would otherwise hang the suite forever if
+# disconnect detection regressed.
+set_tests_properties(coordinator_disconnect_test PROPERTIES TIMEOUT 30)
+
+add_backtester_test(
+    coordinator_retry_test
+    integration/coordinator_retry_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets and retries; bound the runtime if a retry loop regresses.
+set_tests_properties(coordinator_retry_test PROPERTIES TIMEOUT 30)
+
+add_backtester_test(
+    coordinator_duplicate_test
+    integration/coordinator_duplicate_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets; bound the runtime if duplicate suppression regresses.
+set_tests_properties(coordinator_duplicate_test PROPERTIES TIMEOUT 30)
+
+add_backtester_test(
+    coordinator_recovery_test
+    integration/coordinator_recovery_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets and a partial state file; bound the runtime if recovery hangs.
+set_tests_properties(coordinator_recovery_test PROPERTIES TIMEOUT 30)
+
+add_backtester_test(
+    coordinator_timeout_test
+    integration/coordinator_timeout_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets and a deliberate non-reply; a missed timeout must not hang.
+set_tests_properties(coordinator_timeout_test PROPERTIES TIMEOUT 30)
+
+add_backtester_test(
+    coordinator_uneven_workload_test
+    integration/coordinator_uneven_workload_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets with intentional sleeps; bound the runtime under load.
+set_tests_properties(coordinator_uneven_workload_test PROPERTIES TIMEOUT 60)
 
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(
@@ -239,6 +296,8 @@ target_compile_definitions(
     backtester_end_to_end_test
     PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester>\""
 )
+# Spawns a process and computes a real sweep; bound the runtime on slow hosts.
+set_tests_properties(backtester_end_to_end_test PROPERTIES TIMEOUT 120)
 
 # End-to-end test: drives the worker executable through its stdio transport.
 add_backtester_test(
@@ -250,6 +309,8 @@ target_compile_definitions(
     worker_executable_test
     PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester_worker>\""
 )
+# Spawns a process; bound the runtime if stdio framing regresses.
+set_tests_properties(worker_executable_test PROPERTIES TIMEOUT 60)
 
 # End-to-end test: drives the worker executable through its TCP client path.
 add_backtester_test(
@@ -261,3 +322,5 @@ target_compile_definitions(
     tcp_worker_executable_test
     PRIVATE "EXECUTABLE_PATH=\"$<TARGET_FILE:backtester_worker>\""
 )
+# Spawns a process over TCP; bound the runtime if connect or framing regresses.
+set_tests_properties(tcp_worker_executable_test PROPERTIES TIMEOUT 60)

@@ -37,9 +37,9 @@ void play_failing_worker(std::uint16_t port) {
 
     const BacktestJobMessage job = parse_backtest_job_json(*job_text);
 
-    // Report a terminal failure, then disappear. The coordinator must mark the
-    // in-flight job failed and finish the still-queued jobs without waiting for
-    // this worker to reconnect.
+    // Report a retryable attempt failure, then disappear. The coordinator must
+    // requeue the in-flight job, notice the lost worker, and finish the
+    // still-queued jobs without waiting for this worker to reconnect.
     channel.send(
         worker_error_to_json(
             make_worker_error(
@@ -158,6 +158,30 @@ int main() {
             "all jobs must be terminal as failed"
         );
         expect(
+            stats.workers_disconnected == 1,
+            "the worker that disappeared must be detected"
+        );
+        expect(
+            stats.transport_failures == 1,
+            "the lost worker must be counted as one transport failure"
+        );
+        expect(
+            stats.jobs_dispatched == 1,
+            "only the in-flight job may be delivered"
+        );
+        expect(
+            stats.job_retries == 0,
+            "a requeued job with no worker left is not a retry dispatch"
+        );
+        expect(
+            stats.job_attempts.size() == request.jobs.size(),
+            "the coordinator must report attempts per job"
+        );
+        expect(
+            stats.job_attempts[0] == 1,
+            "the in-flight job must record its one attempt"
+        );
+        expect(
             stats.job_states.size() == request.jobs.size(),
             "the coordinator must report a state for every job"
         );
@@ -199,6 +223,13 @@ int main() {
                 "every failed outcome must carry a reason"
             );
         }
+
+        expect(
+            distributed.results[0].error ==
+                "job was not completed after 1 attempt(s); "
+                "no worker remained to retry it",
+            "an attempted job left queued must explain the lost retry"
+        );
 
         const ExperimentJobOutcome& last =
             distributed.results.back();

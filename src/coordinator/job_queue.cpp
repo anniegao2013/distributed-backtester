@@ -36,6 +36,39 @@ std::optional<QueuedJob> JobQueue::pop() {
     return job;
 }
 
+std::optional<QueuedJob> JobQueue::pop_for(std::chrono::milliseconds timeout) {
+    std::unique_lock<std::mutex> lock(mutex_);
+    condition_.wait_for(lock, timeout, [this] {
+        return closed_ || !jobs_.empty();
+    });
+
+    if (jobs_.empty()) {
+        return std::nullopt;
+    }
+
+    QueuedJob job = std::move(jobs_.front());
+    jobs_.pop_front();
+    return job;
+}
+
+void JobQueue::requeue_front(QueuedJob job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        jobs_.push_front(std::move(job));
+    }
+
+    condition_.notify_one();
+}
+
+void JobQueue::requeue_back(QueuedJob job) {
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        jobs_.push_back(std::move(job));
+    }
+
+    condition_.notify_one();
+}
+
 void JobQueue::close() {
     {
         std::lock_guard<std::mutex> lock(mutex_);

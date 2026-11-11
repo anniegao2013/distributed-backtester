@@ -39,13 +39,23 @@ struct JobStateTransition {
 //
 //   pending -> running -> completed
 //                      -> failed
+//                      -> pending   (retryable attempt, job requeued)
 //   pending -> failed              (no worker was available)
 //
-// Terminal states are final. Invalid indexes or transitions throw
-// std::out_of_range / std::logic_error.
+// A running job returns to pending only when its failure is retryable and it
+// still has attempts left. Terminal states are final. Invalid indexes or
+// transitions throw std::out_of_range / std::logic_error.
 class JobStateTracker {
 public:
     explicit JobStateTracker(const std::vector<ExperimentJob>& jobs);
+
+    // Restores an existing state table. `initial_states` must have exactly one
+    // entry per job. Used when a coordinator resumes from persisted state; the
+    // caller is responsible for normalizing running jobs before dispatch.
+    JobStateTracker(
+        const std::vector<ExperimentJob>& jobs,
+        const std::vector<JobState>& initial_states
+    );
 
     JobStateTracker(const JobStateTracker&) = delete;
     JobStateTracker& operator=(const JobStateTracker&) = delete;
@@ -58,6 +68,11 @@ public:
     bool all_terminal() const;
 
     JobStateTransition mark_running(std::size_t index);
+
+    // Moves a running job back to pending so it can be dispatched again.
+    // Used only when a retryable attempt failed and attempts remain.
+    JobStateTransition mark_pending(std::size_t index);
+
     JobStateTransition mark_completed(std::size_t index);
     JobStateTransition mark_failed(std::size_t index);
 

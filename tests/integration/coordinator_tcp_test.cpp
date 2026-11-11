@@ -190,6 +190,10 @@ int main() {
             "no worker connection should fail"
         );
         expect(
+            stats.workers_disconnected == 0,
+            "every worker must stay connected for the whole run"
+        );
+        expect(
             distributed.results.size() == request.jobs.size(),
             "distributed run must return one outcome per job"
         );

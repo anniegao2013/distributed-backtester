@@ -4,6 +4,7 @@
 
 #include <condition_variable>
 #include <cstddef>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -38,15 +39,30 @@ public:
     // True once terminal_count() == size().
     bool complete() const;
 
-    // Records the terminal outcome for jobs[index]. Throws std::out_of_range
-    // for an invalid index and std::logic_error if that job already terminated.
-    void record(std::size_t index, ExperimentJobOutcome outcome);
+    // Records the terminal outcome for jobs[index]. The first terminal outcome
+    // wins: recording again for a job that already terminated is an idempotent
+    // no-op, so a duplicate submission cannot overwrite a result or advance the
+    // terminal count twice. Returns true when the outcome was stored and false
+    // when it was ignored as a duplicate. Throws std::out_of_range for an
+    // invalid index.
+    bool record(std::size_t index, ExperimentJobOutcome outcome);
 
     // Marks every still-pending job as failed with `error`. This terminates
     // jobs that no execution backend is left to run, such as jobs still queued
     // after every worker has failed. Completed jobs are never overwritten.
     // Returns the number of jobs newly marked terminal.
     std::size_t fail_remaining(const std::string& error);
+
+    // Like fail_remaining(), but chooses the message per request index. This
+    // lets the coordinator distinguish a job that never reached a worker from
+    // one whose retry was still queued when the last worker disappeared.
+    std::size_t fail_remaining(
+        const std::function<std::string(std::size_t)>& error_for_index
+    );
+
+    // Copy of the current outcomes in request order. Pending jobs hold
+    // std::nullopt. Used to checkpoint in-memory state without consuming it.
+    std::vector<std::optional<ExperimentJobOutcome>> snapshot() const;
 
     // Blocks until every job has a terminal outcome.
     void wait() const;

@@ -15,6 +15,10 @@ bool TcpChannel::connected() const noexcept {
     return socket_.valid();
 }
 
+bool TcpChannel::peer_closed() const noexcept {
+    return socket_.peer_closed();
+}
+
 std::optional<std::string> TcpChannel::receive() {
     if (!socket_.valid()) {
         throw std::runtime_error(
@@ -23,6 +27,18 @@ std::optional<std::string> TcpChannel::receive() {
     }
 
     return socket_.receive_frame();
+}
+
+std::optional<std::string> TcpChannel::receive_for(
+    std::chrono::milliseconds timeout
+) {
+    if (!socket_.valid()) {
+        throw std::runtime_error(
+            "TcpChannel::receive_for() called before connect()"
+        );
+    }
+
+    return socket_.receive_frame_for(timeout);
 }
 
 void TcpChannel::send(const std::string& message) {
