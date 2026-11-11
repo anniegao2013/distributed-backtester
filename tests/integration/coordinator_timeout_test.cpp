@@ -199,8 +199,8 @@ ExperimentRequest single_job_request() {
     return request;
 }
 
-// A connected worker that receives a job and never answers must not stall the
-// run forever. With no attempts left the timeout is terminal.
+// A worker that never answers must not stall the run. With no attempts left,
+// the timeout is terminal.
 void test_timeout_fails_job_with_no_attempts_left() {
     const ExperimentRequest request = single_job_request();
 
@@ -219,8 +219,7 @@ void test_timeout_fails_job_with_no_attempts_left() {
             const std::optional<std::string> text = channel.receive();
             expect(text.has_value(), "the hung worker must get the job");
 
-            // Stay connected but never reply. The coordinator must close the
-            // connection after the timeout, which ends this read.
+            // Stay connected but never reply; the coordinator closes it.
             while (channel.receive().has_value()) {
             }
         }
@@ -279,9 +278,8 @@ void test_timeout_fails_job_with_no_attempts_left() {
     );
 }
 
-// Both workers follow the same policy: whichever receives the first delivery
-// hangs, and the other one stays idle until the retry arrives. This makes the
-// reassignment deterministic without relying on thread scheduling order.
+// Whichever worker gets the first delivery hangs; the other waits for the
+// retry. This makes reassignment deterministic.
 void test_timeout_is_retried_on_another_worker() {
     const ExperimentRequest request = single_job_request();
 
@@ -332,8 +330,7 @@ void test_timeout_is_retried_on_another_worker() {
                 }
                 condition.notify_all();
 
-                // Hang until the coordinator times this attempt out and the
-                // connection is closed.
+                // Hang until the coordinator times out and closes the socket.
                 while (channel.receive().has_value()) {
                 }
                 return;

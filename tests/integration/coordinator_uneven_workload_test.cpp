@@ -130,9 +130,7 @@ BacktestResultMessage completed_result(
     return message;
 }
 
-// One fast worker and one deliberately slow worker share a small queue. The
-// slow worker must not block FIFO dispatch, and no job may need a retry merely
-// because the load is uneven.
+// A slow worker and a slow job must not block FIFO dispatch or force retries.
 void test_uneven_job_durations() {
     constexpr std::size_t kJobs = 8;
     constexpr int kRounds = 3;

@@ -18,9 +18,8 @@ namespace net {
 
 inline constexpr std::size_t kMaxFrameBytes = 8 * 1024 * 1024;
 
-// Thrown when a bounded receive does not produce a complete frame before its
-// deadline. The connection may still be healthy; the caller decides whether a
-// slow peer should be retried or dropped.
+// Thrown when a bounded receive misses its deadline. The connection may still
+// be healthy; the caller decides what to do.
 class TimeoutError : public std::runtime_error {
 public:
     using std::runtime_error::runtime_error;
@@ -64,9 +63,8 @@ public:
     // closes mid-frame, the frame is empty, or the frame exceeds the limit.
     std::optional<std::string> receive_frame();
 
-    // Like receive_frame(), but the whole frame (header plus payload) must
-    // arrive within `timeout`. Throws TimeoutError when the deadline passes.
-    // A zero timeout is treated as an immediate deadline.
+    // Like receive_frame(), but header and payload must arrive within
+    // `timeout`. Throws TimeoutError; zero means an immediate deadline.
     std::optional<std::string> receive_frame_for(
         std::chrono::milliseconds timeout
     );

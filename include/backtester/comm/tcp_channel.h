@@ -31,8 +31,7 @@ public:
 
     std::optional<std::string> receive() override;
 
-    // Like receive(), but the document must arrive within `timeout`. Throws
-    // net::TimeoutError when the deadline passes.
+    // Like receive(), but the document must arrive within `timeout`.
     std::optional<std::string> receive_for(
         std::chrono::milliseconds timeout
     );
