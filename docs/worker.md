@@ -89,42 +89,22 @@ execution. It excludes queueing and transport time.
 
 ## Transport
 
-The worker consumes the shared communication-layer contract; see
-[`communication.md`](communication.md) for the full definition.
+The worker uses `WorkerTransport`, an alias of `comm::MessageChannel`. The
+contract and framing implementations are defined in
+[`communication.md`](communication.md); the worker only relies on one complete
+JSON document per `receive()`/`send()` call.
 
-```cpp
-namespace comm {
-
-class MessageChannel {
-public:
-    virtual ~MessageChannel() = default;
-    virtual void connect() {}
-    virtual std::optional<std::string> receive() = 0;
-    virtual void send(const std::string& message) = 0;
-    virtual void close() {}
-};
-
-}  // namespace comm
-
-using WorkerTransport = comm::MessageChannel;
-```
-
-`receive()` returns exactly one complete JSON document and `send()` accepts
-exactly one. The worker calls `send()` once with `worker_ready` before the first
-`receive()`. Framing, connection lifecycle, retries, and duplicate suppression
-belong to the transport or coordinator, not the loop. `run_worker()` lets
-transport exceptions propagate, so a broken connection terminates the process
-with a non-zero exit code instead of silently dropping work.
+`run_worker()` calls `connect()`, sends one `worker_ready`, then loops on
+`receive()` until `std::nullopt` or a shutdown message. Transport exceptions
+propagate, so a broken connection exits non-zero instead of silently dropping
+work.
 
 ### TCP transport
 
-`TcpTransport` is an alias for `comm::TcpClientChannel`, the worker side of the
-TCP communication layer. `connect()` resolves and dials the coordinator.
-Messages are framed as a 4-byte big-endian payload length followed by one UTF-8
-JSON document. Frames must be non-empty and at most 8 MiB. The socket helpers
-retry partial reads and writes and report a clean close between frames as
-`std::nullopt`, which ends the worker loop normally. A close in the middle of a
-frame is a transport error.
+`TcpTransport` is an alias for `comm::TcpClientChannel`. `connect()` dials the
+coordinator. A clean close between frames yields `std::nullopt` and ends the loop
+normally; a mid-frame close is a transport error. See
+[`communication.md`](communication.md) for the frame format and size limit.
 
 ### Stdio development transport
 
@@ -214,15 +194,10 @@ touches the wire.
 ## What is not here yet
 
 - Connection timeouts and automatic reconnection.
-- Job cancellation: the coordinator may abandon an attempt after its local job
-  timeout, but the worker keeps computing and is not told to stop.
-- Heartbeats and worker capacity advertisement.
-- Duplicate suppression by `message_id` on the worker; the coordinator suppresses
-  duplicate *submissions*, and a repeated job is executed again.
+- Job cancellation: the coordinator may abandon an attempt after its timeout,
+  but the worker is not told to stop.
+- Heartbeats, capacity advertisement, and multiple jobs in flight per worker.
 - Worker-side persistence or recovery; job state belongs to the coordinator.
-- Multiple jobs in flight per worker.
 
-Those are transport and coordination concerns. The worker loop is deliberately
-small: a TCP client sends `worker_ready`, pulls one job at a time, and exits on
-`shutdown` or a clean close. The coordinator owns registration, scheduling, and
+The coordinator owns registration, scheduling, retries, timeouts, and
 aggregation; see [`coordinator.md`](coordinator.md).

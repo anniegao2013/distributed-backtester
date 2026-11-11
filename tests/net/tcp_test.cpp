@@ -178,8 +178,7 @@ void test_receive_frame_for_deadline() {
         "a bounded receive must not block past its deadline"
     );
 
-    // A timeout means no frame arrived; it must not consume data or leave the
-    // connection unusable.
+    // A timeout must not consume data or break the connection.
     expect(
         !server.peer_closed(),
         "a timed-out receive must not be mistaken for a closed peer"

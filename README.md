@@ -1,85 +1,73 @@
 # Distributed Backtester
 
-A C++17 framework for evaluating trading strategies against historical market data, with plans for scalable experiment execution.
+A C++17 engine and distributed runtime for evaluating trading strategies over
+historical market data. The same experiment can run locally in parallel or across
+coordinator and worker processes over TCP.
 
-## Features
-
-- **Market data loader:** Parses and validates historical OHLCV data from CSV files.
-- **Strategy interface:** Interchangeable strategies through a common `on_bar()` interface.
-- **Execution pipeline:** Strategies emit `Signal` intent; the engine sizes `Order`s, fills them into `Trade`s (applying slippage and commission), and applies trades to the portfolio.
-- **Moving-average crossover:** Example long-only strategy using short- and long-term moving averages.
-- **RSI mean reversion:** Example long-only strategy that buys when the Relative Strength Index (RSI) falls below an oversold threshold and sells when it rises above an exit threshold.
-- **Donchian channel breakout:** Example long-only strategy that buys when the close breaks above the highest high of the previous `entry_period` bars and sells when it falls below the lowest low of the previous `exit_period` bars.
-- **Backtesting engine:** Simulates trades and tracks portfolio equity over a date range, including warm-up bars.
-- **Portfolio accounting:** Cash, per-symbol positions with average cost, and mark-to-market equity; buys and sells update the holding identified by symbol.
-- **Parameter grid:** Cartesian product of parameter combinations, each wired to a `BacktestConfig` and run concurrently through `run_backtest()`, bounded by configurable concurrency. The demo runs the moving-average crossover, RSI mean-reversion, and Donchian channel breakout strategies side by side, sweeping each strategy's parameters.
-- **JSON experiment schema:** Versioned request documents define the dataset, date range, execution costs, strategy grids, and output options. A matching response schema describes the machine-readable result.
-- **Service-ready entry point:** `run_experiment_json()` accepts a request document and always returns a schema-shaped response, including structured validation errors. The CLI exposes the same path via `--experiment` and stdin.
-- **Worker protocol:** Versioned JSON messages for availability (`worker_ready`), coordinator-to-worker jobs (`backtest_job`), worker-to-coordinator results (`backtest_result`), shutdown (`shutdown`), and errors (`worker_error`), with strict parsing, validation, and JSON Schemas. Messages travel over TCP using length-prefixed frames.
-- **Standalone worker:** `backtester_worker` connects to a coordinator with `--connect HOST:PORT`, announces `worker_ready`, then receives one job at a time, runs the existing engine, and replies with one result. It keeps serving until it receives a `shutdown` message or its connection closes. The same loop also runs over a line-oriented stdio transport for local debugging.
-- **Distributed coordinator:** `backtester_coordinator` is a TCP server that accepts workers, expands an experiment into jobs, assigns each job to an available worker, collects results, and aggregates them into the normal experiment response. Slow jobs do not block other workers.
-- **Coordinator-owned job states:** Every job moves through `pending`, `running`, `completed`, or `failed` in a coordinator-side state table. Workers only report results; the coordinator is the single source of truth and exposes transitions to observers.
-- **Worker crash and disconnect detection:** The coordinator checks idle connections, requeues work that was never delivered, retries or fails the in-flight job of a worker that disappears, and continues on healthy workers. Lost workers are counted in stats and reported through a disconnect callback instead of being waited on forever.
-- **Per-job timeouts:** `--job-timeout SECONDS` (or `CoordinatorConfig::job_timeout`) bounds how long a dispatched job may wait for its reply. A timeout is treated as a lost worker: the attempt is retried or failed under the attempt bound, the worker is removed from scheduling, and `job_timeouts` is reported. The default of `0` waits indefinitely.
-- **Bounded job retries and reassignment:** Retryable failures (`worker_error`, transport/protocol loss, and optionally `backtest_result` status `failed`) are returned to the queue with a fresh `message_id`, offered to the next available worker, and failed only when the attempt limit is reached. Validation failures are terminal immediately, and per-job attempt counts plus a total retry count are reported.
-- **Idempotent result handling:** A repeated `backtest_result` or `worker_error` whose `message_id` was already handled is ignored. The first terminal outcome wins, so a duplicate cannot overwrite a result, advance a state twice, consume an extra attempt, or be mistaken for the next job's reply. Ignored duplicates are counted separately.
-- **Persistent job state and restart recovery:** With `--state PATH`, the coordinator checkpoints job states, attempt counts, and terminal outcomes to one versioned JSON file using atomic writes. A relaunch resumes the same experiment: terminal jobs are reused, jobs that were running are requeued, and jobs whose attempts were already exhausted fail with an explanatory message. A completed run returns immediately without waiting for workers.
-- **Terminal-state aggregation:** Local threads and remote workers both report into one result collector indexed by request order. An experiment finishes only when every job has completed or failed, and the same aggregation code builds the response regardless of where the job ran.
-- **Performance stats:** Throughput, latency (mean/median/min/max/p95), CPU utilization, CPU efficiency, and speedup measured per run.
-- **Ranking:** Results ranked by Sharpe ratio (highest first), with a best-configuration summary.
-- **Performance metrics:** Total return, annualized Sharpe ratio, maximum drawdown, completed round trips, executed fills, and total trading costs.
-- **Automated tests:** Unit, integration, accounting-invariant, parallel-execution, TCP framing, distributed coordinator/worker, and end-to-end tests.
-
-## Technical Details
-
-- **Language:** C++17
-- **Build system:** CMake
-- **Data:** Daily S&P 500 index OHLCV data (1950–2018)
-- **Trading model:** Long-only, fractional shares. Strategies emit signals at a bar's close; the engine converts each signal into an order sized against the current portfolio, fills it at the next bar's open with configurable commission (`transaction_cost_rate`) and adverse slippage (`slippage_rate`), and applies the resulting trade. Open positions are marked to market at the final close.
-
-## Project Layout
+## Architecture
 
 ```text
-include/backtester/
-  core/          Market data, JSON values, identifiers, dates, parameter grids, stats
-  trading/       Strategy interface, portfolio, execution, backtest engine
-  strategies/    Built-in trading strategies
-  experiment/    Versioned experiment schema and service entry point
-  protocol/      Coordinator <-> worker wire message types
-  net/           TCP listening, connecting, and length-prefixed framing
-  comm/          Transport-neutral one-document-per-call channel contract
-  worker/        Worker transport interface, TCP/stdio transports, job execution
-  coordinator/   Worker registration, job state, FIFO dispatch, and aggregation
-src/
-  core/          Implementations of the core utilities
-  trading/       Implementations of the trading model
-  strategies/    Implementations of the built-in strategies
-  experiment/    Request parsing, validation, execution, and result JSON
-  protocol/      Job/result parsing, validation, and serialization
-  net/           TCP socket and framing implementation
-  comm/          TCP channel implementations
-  worker/        Worker loop, job execution, and stdio/TCP transports
-  coordinator/   TCP server and distributed scheduling loop
-  main.cpp       Local CLI entry point
-  worker_main.cpp        Worker executable entry point
-  coordinator_main.cpp   Coordinator executable entry point
-tests/
-  core/          Unit tests for core utilities
-  trading/       Unit and accounting tests for the trading model
-  strategies/    Unit tests for each strategy
-  experiment/    Schema, service, and parallel-execution tests
-  protocol/      Wire message parsing, validation, and round-trip tests
-  net/           TCP framing and endpoint tests
-  comm/          Communication-layer contract and channel tests
-  worker/        Worker loop, job execution, and transport tests
-  integration/   Real-data, protocol-example, worker, coordinator, pipeline, and end-to-end tests
+experiment JSON
+      |
+      v
+experiment service ──────> local parallel runner
+      |
+      └───────────────> coordinator  <──TCP──>  stateless workers
+                        (queue + state)
 ```
 
-Public headers are included relative to `include/backtester`, for example
-`#include "trading/backtest_engine.h"`,
-`#include "experiment/experiment.h"`,
-`#include "protocol/protocol.h"`, or
-`#include "worker/worker.h"`.
+| Layer | Responsibility | Reference |
+| --- | --- | --- |
+| Core engine | Market data, strategies, order execution, portfolio accounting, metrics, and ranking. | [`include/backtester/trading`](include/backtester/trading) |
+| Experiment service | Versioned JSON requests, grid expansion, local parallel execution, deterministic aggregation, and result JSON. | [`docs/experiments.md`](docs/experiments.md) |
+| Coordinator | Worker registration, FIFO dispatch, retries, job state, timeouts, persistence, and aggregation. | [`docs/coordinator.md`](docs/coordinator.md) |
+| Worker | A thin, stateless process that runs one job at a time with the core engine. | [`docs/worker.md`](docs/worker.md) |
+| Protocol and transport | Versioned JSON messages over a transport-neutral channel with TCP framing. | [`docs/protocol.md`](docs/protocol.md), [`docs/communication.md`](docs/communication.md) |
+
+### Design principles
+
+- **The coordinator owns job state.** Workers only execute jobs and report one
+  result. `pending`, `running`, `completed`, and `failed` never leave the
+  coordinator's state table.
+- **Dispatch is FIFO and worker-driven.** A worker takes the oldest queued job
+  when it becomes free, so one slow job does not block idle workers.
+- **A job is terminal only when completed or failed.** Retries are bounded
+  reassignments with fresh correlation keys.
+- **Reliability is coordinator-local.** Transport loss, timeouts, duplicate
+  submissions, and restart recovery change scheduling, not the wire protocol.
+- **Persistence is opt-in.** In-memory execution is the default; `--state PATH`
+  adds a durable checkpoint.
+
+## Capabilities
+
+**Backtesting**
+
+- Loads and validates historical OHLCV CSV data.
+- Interchangeable strategies behind a common `on_bar()` interface, with moving
+  average crossover, RSI mean reversion, and Donchian channel breakout examples.
+- Long-only, fractional-share execution with commission, slippage, warm-up bars,
+  and mark-to-market portfolio equity.
+- Reports total return, annualized Sharpe ratio, maximum drawdown, trade count,
+  costs, latency, throughput, CPU utilization, and ranking.
+
+**Experiments**
+
+- Expands parameter grids into concrete jobs and runs them concurrently with a
+  configurable in-flight limit.
+- Provides versioned request/response JSON schemas and a service entry point that
+  returns structured validation errors.
+- Produces the same deterministic response for local and distributed runs.
+
+**Distributed execution**
+
+- Coordinator/worker split over TCP, with an optional stdio transport for local
+  debugging.
+- FIFO distribution, bounded retries, reassignment after worker loss, per-job
+  timeouts, and duplicate-result suppression.
+- Optional durable state with restart recovery; completed runs return without
+  waiting for workers.
+- Per-job states, attempt counts, retries, timeouts, disconnects, duplicates, and
+  recovery counters exposed through `CoordinatorStats`.
 
 ## Build and Test
 
@@ -89,9 +77,13 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-## Running Experiments
+The suite covers core accounting invariants, protocol validation, TCP framing,
+parallel execution, coordinator scheduling and recovery, uneven workloads, and
+end-to-end executable runs.
 
-The built-in demo runs with no arguments. To run a JSON-defined experiment:
+## Running
+
+Local execution is the default:
 
 ```bash
 ./build/backtester --experiment experiments/crossover_sweep.json
@@ -99,68 +91,65 @@ The built-in demo runs with no arguments. To run a JSON-defined experiment:
 cat request.json | ./build/backtester --experiment - --json
 ```
 
-The request and response contracts, field reference, job-ID rules, and
-service-integration notes are in [`docs/experiments.md`](docs/experiments.md).
-The JSON Schemas live in [`schema/`](schema) and example requests in
-[`experiments/`](experiments).
-
-## Distributed Execution
-
-The coordinator is a TCP server and each worker is a TCP client. Both use the
-same transport-neutral `comm::MessageChannel` contract: one JSON document per
-send/receive, with framing and connection lifecycle owned by the channel. The
-coordinator expands an experiment into `backtest_job` messages and queues them in
-request order for FIFO distribution: a worker is available exactly when it has
-finished its previous job and takes the oldest queued job. The worker runs the
-existing engine and replies with a `backtest_result`. A retryable failure is put
-back in the queue with a new `message_id` and a higher attempt count, so it can
-land on a different worker; `--max-attempts` (default 3) bounds this. When every
-job is terminal the coordinator sends `shutdown` to every worker and aggregates
-the results into the same experiment response produced by a local run. Passing
-`--state PATH` makes that state durable, so a restarted coordinator resumes the
-same experiment instead of starting over.
+Distributed execution starts the coordinator first, then the workers:
 
 ```bash
-# Terminal 1: coordinator. It waits for two workers before dispatching.
+# Terminal 1: accept two workers, dispatch, aggregate, and exit.
 ./build/backtester_coordinator \
   --experiment experiments/crossover_sweep.json \
   --workers 2
 
-# Terminal 2 and 3: workers connect as clients.
+# Terminals 2 and 3: connect as clients.
 ./build/backtester_worker --worker-id worker-a --connect 127.0.0.1:9000
 ./build/backtester_worker --worker-id worker-b --connect 127.0.0.1:9000
 
-# Machine-readable output uses the standard experiment result schema.
+# Retries, persistence, and timeouts are coordinator options.
 ./build/backtester_coordinator \
-  --experiment experiments/demo.json --workers 2 --json
-
-# Allow up to five dispatch attempts per job. Runtime failures are retried by
-# default; add --no-retry-failed-results to retry only worker/transport errors.
-./build/backtester_coordinator \
-  --experiment experiments/demo.json --workers 2 --max-attempts 5
-
-# Checkpoint progress. Re-running the same command resumes unfinished jobs.
-./build/backtester_coordinator \
-  --experiment experiments/demo.json --workers 2 --state run-state.json
-
-# Treat a job that runs longer than 60 seconds as a lost worker and retry it.
-./build/backtester_coordinator \
-  --experiment experiments/demo.json --workers 2 --job-timeout 60
+  --experiment experiments/demo.json --workers 2 \
+  --max-attempts 5 --job-timeout 60 --state run-state.json
 ```
 
-TCP frames are a 4-byte big-endian payload length followed by one UTF-8 JSON
-document, with an 8 MiB limit. On a local machine the default listen address is
-`127.0.0.1:9000`; use `--listen 0.0.0.0:9000` to accept remote workers. Version 1
-assumes every process sees the dataset at the same path.
+The coordinator prints a text summary by default; add `--json` for the standard
+experiment result document. See [`docs/coordinator.md`](docs/coordinator.md) for
+all options and failure semantics.
 
-The worker is a thin wrapper around the existing engine: it deserializes a job,
-validates the strategy and parameters, loads the data, calls `run_backtest()`,
-and serializes the result. It loops for another job until it receives a
-`shutdown` message or loses its connection.
+## Project Layout
 
-See [`docs/coordinator.md`](docs/coordinator.md) for scheduling and failure
-handling, [`docs/communication.md`](docs/communication.md) for the channel
-contract and framing, [`docs/worker.md`](docs/worker.md) for the worker
-lifecycle, and [`docs/protocol.md`](docs/protocol.md) for the wire contract.
-Message schemas live in [`schema/`](schema) and protocol examples in
-[`examples/protocol/`](examples/protocol).
+```text
+include/backtester/   Public headers
+src/                  Implementations and the three executables
+  main.cpp            Local runner
+  coordinator_main.cpp
+  worker_main.cpp
+tests/                Unit, integration, and end-to-end tests
+experiments/          Example experiment requests
+schema/               Request, response, and protocol JSON Schemas
+examples/protocol/    Example protocol messages
+docs/                 Architecture and reference documentation
+```
+
+Public headers are included relative to `include/backtester`, for example
+`#include "trading/backtest_engine.h"` or `#include "coordinator/coordinator.h"`.
+
+## Documentation
+
+- [`docs/experiments.md`](docs/experiments.md) — request/response fields, local
+  execution, job IDs, and service integration.
+- [`docs/coordinator.md`](docs/coordinator.md) — distributed architecture,
+  scheduling, state, retries, timeouts, persistence, and recovery.
+- [`docs/worker.md`](docs/worker.md) — worker lifecycle, error mapping, and
+  transports.
+- [`docs/protocol.md`](docs/protocol.md) — wire messages, envelope, validation,
+  and versioning.
+- [`docs/communication.md`](docs/communication.md) — channel contract, TCP
+  framing, and transport boundaries.
+- [`schema/`](schema) — JSON Schemas; [`examples/protocol/`](examples/protocol) —
+  example messages.
+
+## Current Boundaries
+
+Version 1 assumes every process sees the dataset at the same path and runs on a
+trusted network. See the limitations sections of
+[`docs/coordinator.md`](docs/coordinator.md#limitations) and
+[`docs/worker.md`](docs/worker.md#what-is-not-here-yet) for the current
+constraints.

@@ -79,8 +79,10 @@ keeps a single malformed length prefix from forcing an unbounded allocation.
 | `StdioTransport` | Local development worker | One compact JSON document per line |
 
 `net::TcpSocket` performs the socket work and exposes `send_frame()`,
-`receive_frame()`, and the non-blocking `peer_closed()` liveness check.
-`comm::TcpChannel` adapts that to the `MessageChannel` contract.
+`receive_frame()`, `receive_frame_for()`, and the non-blocking `peer_closed()`
+liveness check. `comm::TcpChannel` adapts those to the `MessageChannel` contract
+and adds `receive_for()` for callers that need a bounded wait. Timeout policy
+stays with the coordinator; see [`coordinator.md`](coordinator.md).
 `TcpClientChannel` owns dialing and delegates to a `TcpChannel` after
 `connect()`. `peer_closed()` uses `poll()` plus a non-blocking `MSG_PEEK`, so a
 closed or reset peer is visible without consuming a frame; pending data is not

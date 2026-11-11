@@ -449,8 +449,7 @@ AttemptResult receive_result(
     AttemptLedger& ledger,
     Logger& logger
 ) {
-    // One deadline covers the entire attempt, including any duplicate replies
-    // that are skipped while waiting for the correlated result.
+    // One deadline covers the attempt, including skipped duplicate replies.
     const std::optional<std::chrono::steady_clock::time_point> deadline =
         job_timeout.count() > 0
             ? std::optional<std::chrono::steady_clock::time_point>(

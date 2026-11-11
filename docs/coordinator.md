@@ -1,308 +1,189 @@
 # Coordinator
 
-`backtester_coordinator` is the TCP server half of distributed execution. It
-expands one experiment document into jobs, waits for workers to connect,
-dispatches work to whichever worker is available, retries retryable failures on
-another available worker, and aggregates the results into the same response
-document that a local run produces.
+`backtester_coordinator` is the server half of distributed execution. It expands
+one experiment into jobs, accepts workers, owns all job state, and aggregates the
+results into the same response document a local run produces.
 
-The wire contract is defined in [`protocol.md`](protocol.md); the worker process
-is described in [`worker.md`](worker.md).
+The wire contract is defined in [`protocol.md`](protocol.md), the worker process
+in [`worker.md`](worker.md), and framing in [`communication.md`](communication.md).
 
-## Sequence
+## Role and boundaries
+
+- The coordinator is the TCP server; workers are clients.
+- It is the single source of truth for `pending`, `running`, `completed`, and
+  `failed`. Workers never publish or persist state.
+- It decides scheduling, retries, timeouts, and recovery. These policies do not
+  change the protocol.
+- It returns one complete `ExperimentResult`; local and distributed runs share
+  the same aggregation code.
 
 ```text
 Coordinator                                   Worker
 -----------                                   ------
-bind HOST:PORT and listen
-                                              start independently
-accept connection  <------------------------  connect to HOST:PORT
-read worker_ready  <------------------------  send worker_ready
-send backtest_job  ------------------------->  receive one job
-                                              validate, load data, run engine
-read backtest_result  <---------------------  send one result
-send next job  ----------------------------->  worker is available again
+bind and listen
+accept connection        <-------------------  connect
+read worker_ready        <-------------------  send worker_ready
+send backtest_job        ------------------->  run one job
+read backtest_result     <-------------------  send one result
+send next job            ------------------->  available again
 ...
-send shutdown  ----------------------------->  finish current job, close
-aggregate results and exit
+send shutdown            ------------------->  exit after the current job
+aggregate and return
 ```
 
-A worker is available exactly when it has finished its previous job. The
-coordinator blocks on that worker's reply and then hands it the next queued job.
-Slow jobs therefore do not hold up other workers.
+## Execution model
 
-Each accepted connection is a `comm::TcpChannel` implementing the shared
-[`comm::MessageChannel`](communication.md) contract. The coordinator sends and
-receives whole JSON documents and leaves framing to the communication layer.
+1. The experiment is finalized before dispatch, so `request.jobs` is already the
+   concrete list of backtests. One `backtest_job` is built per entry with the
+   experiment's data, execution, and output settings.
+2. After loading state and market data, the coordinator binds its listener and
+   waits for the configured number of `worker_ready` announcements.
+3. Every pending job enters a thread-safe FIFO queue in request order. The queue
+   is closed for new work, but retries may still be requeued at the back.
+4. Each worker thread takes one concurrency permit, then blocks in `pop_for()`.
+   A job always wins over the liveness interval, so the oldest queued job is
+   claimed first.
+5. The coordinator sends a job, records the attempt, waits for exactly one reply,
+   records the terminal outcome, and gives the worker its next job.
+6. When every job is terminal, workers receive `shutdown` and the results are
+   aggregated in request order.
 
-## Usage
-
-```bash
-# Start a coordinator on the default local address. It accepts two workers
-# before dispatching.
-./build/backtester_coordinator \
-  --experiment experiments/crossover_sweep.json \
-  --workers 2
-
-# In separate terminals or hosts, point each worker at it.
-./build/backtester_worker --worker-id worker-a --connect 127.0.0.1:9000
-./build/backtester_worker --worker-id worker-b --connect 127.0.0.1:9000
-
-# Emit the aggregated ExperimentResult document instead of text.
-./build/backtester_coordinator -e experiments/demo.json -n 2 --json
-```
-
-Options:
-
-| Option | Default | Description |
-| --- | --- | --- |
-| `-e`, `--experiment PATH` | required | Experiment JSON. Use `-` to read it from stdin. |
-| `-l`, `--listen HOST:PORT` | `127.0.0.1:9000` | Bind address. Use `0.0.0.0:9000` to accept remote workers. Port `0` selects an ephemeral port. |
-| `-n`, `--workers N` | `1` | Number of worker connections to accept before dispatch starts. |
-| `--max-attempts N` | `3` | Maximum dispatch attempts per job. `1` disables retries. |
-| `--no-retry-failed-results` | off | Do not retry `backtest_result` status `failed`. `worker_error` and transport failures remain retryable. |
-| `--state PATH` | off | Persist coordinator job state to `PATH` and resume from an existing checkpoint for the same experiment. |
-| `--job-timeout SECONDS` | `0` | Maximum time to wait for one job's result. On expiry the worker is treated as lost and the attempt is retried or failed under `--max-attempts`. `0` disables the timeout. |
-| `--json` | off | Write `experiment_result_to_json()` instead of the text summary. |
-
-The coordinator does not exit until it has accepted `--workers` connections.
-Start it first, then start the workers.
-
-## Scheduling
-
-The experiment is finalized before dispatch, so `request.jobs` is already the
-fully-expanded list of concrete backtests. The coordinator builds one
-`backtest_job` per entry, attaching the experiment's `data`, `execution`, and
-`output` settings and choosing a unique `message_id`.
-
-Every job is appended to a thread-safe FIFO `JobQueue` in request order before
-any worker thread starts. The queue is then closed, so workers stop waiting once
-the last job has been handed out. Each worker thread acquires a concurrency
-permit and calls `pop_for()`, which waits until the next job is available and
-always returns the oldest queued job. The `pop_for()` interval only lets an idle
-thread check whether its worker is still connected; a job always wins the wait.
-It is separate from `--job-timeout`, which bounds a dispatched job's reply.
-Distribution is therefore FIFO: the oldest queued job is claimed first even
-though several workers pop concurrently.
-
-A retryable failure with attempts remaining puts the job back at the **back** of
-the queue, so other queued work keeps making progress and the retry can land on
-a different worker. The job keeps its request-order index but gets a new
-`message_id` and an incremented attempt count. The queue accepts this requeue
-after it has been closed for new work, and idle workers stay available until
-every job is terminal rather than exiting as soon as the queue is empty.
-
-The number of permits is:
+The number of in-flight jobs is:
 
 ```text
 min(execution.max_concurrent_jobs or hardware_concurrency, connected workers)
 ```
 
-That means `max_concurrent_jobs` still caps in-flight work even if more workers
-connect. With the default of `0`, all accepted workers can run concurrently.
-Outcomes are written back into the original request-job order, so the aggregated
-document is deterministic regardless of which worker ran which job.
+Idle workers stay available until every job is terminal, because another worker
+may still requeue a retry.
 
 ## Job states
 
-The coordinator is the single source of truth for job state. Workers only send
-results; they never publish or persist state themselves.
-
 | State | Meaning |
 | --- | --- |
-| `pending` | Waiting in the coordinator's FIFO job queue. |
-| `running` | Assigned to a worker and currently executing. |
-| `completed` | A successful result was received. |
-| `failed` | Execution, transport, or result processing failed. |
+| `pending` | Waiting in the FIFO queue. |
+| `running` | Assigned to a worker and awaiting a result. |
+| `completed` | A successful result was recorded. |
+| `failed` | Execution, transport, timeout, or result processing failed terminally. |
 
-A job moves `pending -> running` once it has been handed to a worker. If a
-worker is already gone when the coordinator tries to send the job, the job stays
-`pending` and returns to the queue.
+A job becomes `running` only after its message is successfully sent. If sending
+fails, it stays `pending` and returns to the front of the queue. A retryable
+attempt returns it to `pending`; success and terminal failures are final.
 
-A running job has three possible outcomes:
+Observers can subscribe through `CoordinatorConfig::on_job_state_changed`.
+`CoordinatorStats::job_states` and `job_attempts` expose the final state and
+delivery count per request job.
 
-- **Success.** A `completed` result moves it to `completed`.
-- **Retry.** A retryable failure with attempts remaining moves it back to
-  `pending` (`running -> pending`) and returns it to the queue. This includes a
-  `worker_error`, a transport/protocol failure, a job timeout, and, when
-  `retry_failed_results` is enabled, a `backtest_result` with status `failed`.
-- **Terminal failure.** A non-retryable result, or a retryable failure whose
-  attempts are exhausted, moves it to `failed`. A worker-reported `invalid`
-  result is always terminal because the same validation error would recur.
+## Reliability and failure handling
 
-Jobs still queued after every worker has stopped move directly
-`pending -> failed`. A job that was never dispatched is reported as `job was
-not dispatched to a worker`; a job whose retry was still queued is reported as
-`job was not completed after N attempt(s); no worker remained to retry it`.
-Terminal states are final.
+Retryable failures are reassigned to another available worker with a fresh
+`message_id` and an incremented attempt count. `max_job_attempts` bounds the
+deliveries; `retry_failed_results` controls whether a worker-reported `failed`
+result is retryable.
 
-Progress observers can set `CoordinatorConfig::on_job_state_changed`. Callbacks
-are serialized by the coordinator, though they may run on a worker thread.
-`CoordinatorStats::job_states` contains the final state of every job in request
-order after `run_distributed_experiment()` returns. `job_attempts` holds the
-number of deliveries per job, and `job_retries` counts deliveries after the
-first across the whole run.
+| Situation | Attempt consumed | Outcome |
+| --- | --- | --- |
+| `completed` result | yes | Job becomes `completed`. |
+| `invalid` result | yes | Terminal `failed`; the same validation error would recur. |
+| `failed` result, retry enabled | yes | Requeued with a new `message_id`. |
+| `failed` result, retry disabled | yes | Terminal `failed` with the runtime message. |
+| `worker_error` | yes | Requeued while attempts remain; otherwise terminal with the worker error. |
+| Send fails before delivery | no | Job returns to the front of the queue; worker is removed. |
+| Reply missing, malformed, timed out, or connection lost | yes | Requeued while attempts remain; otherwise terminal `failed`. |
+| Attempt limit reached | yes | Terminal `failed` with the last error. |
+| Repeated handled `message_id` | no | Ignored; the first outcome wins. |
+| Every worker stops with jobs queued | n/a | Pending jobs fail with an undispatched or no-worker-remaining message. |
+
+### Worker loss and timeouts
+
+The coordinator removes a worker when:
+
+- it closes while idle: `peer_closed()` is checked before waiting and every
+  100 ms while idle;
+- it closes between claiming and sending a job: the job returns to the queue;
+- it closes, resets, or sends a malformed/partial reply while running a job;
+- its dispatched job exceeds `job_timeout`, measured once per attempt across any
+  skipped duplicate replies; this uses the same retry/failure path as a lost
+  worker.
+
+Every loss increments `workers_disconnected` and `transport_failures`; timeouts
+also increment `job_timeouts`. Each loss is logged and emitted through
+`CoordinatorConfig::on_worker_disconnected` with the worker ID, reason,
+in-flight job, and whether the job was retried or failed.
+
+This is not a heartbeat. A connected worker with no job in flight is only checked
+for a closed socket; idle hangs are harmless because no work depends on them.
+
+### Duplicate submissions
+
+The coordinator records the `message_id` of every handled attempt. A later
+`backtest_result` or `worker_error` that reuses one of those IDs is ignored: it
+cannot overwrite an outcome, advance a state, consume an attempt, or be mistaken
+for the next job's reply. `duplicate_results` counts ignored submissions. A
+reply with an unknown `message_id` remains a correlation error.
 
 ## Persistence and recovery
 
-Persistence is opt-in. Pass `--state PATH` (or set
-`CoordinatorConfig::state_path`) to write one coordinator-local JSON file. The
-file is versioned (`state_version: 1`), identifies the experiment, and stores
-each job's identity (`job_id`, `strategy_id`, `strategy_type`, `parameters`),
-state, attempt count, and, once terminal, the full outcome including metrics and
-trades. Writes go to `PATH.tmp` and are renamed over `PATH`, so a crash cannot
-leave a half-written document in place.
+Persistence is opt-in. With `--state PATH` (or
+`CoordinatorConfig::state_path`), the coordinator writes one versioned JSON file
+containing each job's identity, state, attempt count, and terminal outcome.
+Writes go to `PATH.tmp` and are renamed over `PATH`, so a crash cannot leave a
+half-written checkpoint.
 
-A relaunch pointed at the same file resumes the experiment:
-
-| Persisted state at load | Recovery action |
+| Persisted state | Action on relaunch |
 | --- | --- |
-| `completed` or `failed` | Kept as terminal; its outcome is reused and the worker is not asked to run it again. |
-| `running` | Returned to `pending` and requeued. The previous process may have died after dispatch, so the result is unknown; the persisted attempt count still bounds retries. |
-| `pending` | Left pending and enqueued normally. |
-| No outcome and `attempts >= max_job_attempts` | Failed with `job was interrupted by a coordinator restart after N attempt(s); no attempts remain`. |
+| `completed` or `failed` | Reuse the outcome; do not run the job again. |
+| `running` | Return to `pending`; the result is unknown and the persisted attempt count still bounds retries. |
+| `pending` | Enqueue normally. |
+| No outcome and `attempts >= max_job_attempts` | Fail with `job was interrupted by a coordinator restart after N attempt(s); no attempts remain`. |
 
-Only pending jobs enter the FIFO queue. A resumed job's next delivery is
-`attempts + 1`, so its fresh `message_id` matches the attempt number. If every
-job is already terminal, the coordinator reloads the dataset for the result
-summary and returns the aggregated outcome immediately, without binding a
-listening socket or waiting for workers. This makes a completed run safe to
-relaunch with the same `--state` path.
+Only pending jobs enter the queue. A resumed attempt uses `attempts + 1` in its
+`message_id`. If every job is already terminal, the coordinator returns the
+aggregated result without binding a socket or waiting for workers.
 
-The file is validated before any socket is opened. A malformed document, an
-unsupported `state_version`, a different `experiment_id`, a job count or job
-identity mismatch, or a terminal state without an outcome raises
-`std::runtime_error`. Terminal outcomes are authoritative: if a snapshot
-contains both a terminal outcome and a lagging `running` state, the outcome
-wins. Persistence failures during the run are logged and counted in
-`CoordinatorStats::persistence_errors`; they do not abort the run or strand
-workers, though the on-disk checkpoint may be stale.
+The file is validated before any socket opens. Malformed content, a different
+`experiment_id`, a job identity mismatch, an unsupported `state_version`, or a
+terminal state without an outcome raises `std::runtime_error`. Terminal outcomes
+are authoritative over a lagging state. Persistence failures during a run are
+logged and counted, not fatal, so a stale checkpoint cannot strand workers.
 
-Recovery statistics are reported separately: `state_recovered`,
-`jobs_recovered`, `jobs_requeued_after_restart`,
-`jobs_exhausted_after_restart`, and `persistence_errors`. The text summary adds
-`State recovered`, `Jobs requeued after restart`, `Jobs exhausted after
-restart`, and `State persistence errors` lines when they apply.
-
-`max_job_attempts` is a runtime policy. It is not stored in the file, so a
-relaunch with a lower limit can fail jobs whose persisted attempt count is
-already at or above the new limit.
-
-## Worker liveness
-
-The coordinator detects lost workers instead of waiting for a reply that will
-never arrive. Detection has three paths:
-
-- **Idle close.** Each worker thread checks `peer_closed()` before waiting for a
-  job and every 100 ms while idle, so a crashed worker is removed even when no
-  work is in flight. This also prevents a coordinator hang when every worker
-  disappears with jobs still queued.
-- **Pre-dispatch close.** A liveness check between claiming a job and sending it
-  returns the job to the front of the FIFO queue. The job is still `pending`,
-  so a healthy worker can run it.
-- **Mid-job loss.** A close, reset, or malformed/partial reply while a result is
-  expected removes the worker. The in-flight job returns to the queue when
-  attempts remain; otherwise it is marked failed. In both cases the remaining
-  queue is available to healthy workers.
-
-A failed `send()` means the job never reached the worker, so it is requeued
-without consuming an attempt. The coordinator cannot distinguish a job that ran
-but whose reply was lost from one that never ran, so an in-flight loss consumes
-an attempt and is retried with a new `message_id`. Backtests are read-only, so a
-duplicate execution is harmless apart from wasted work.
-
-Every loss increments `CoordinatorStats::workers_disconnected` and
-`transport_failures`, is logged, and emits
-`CoordinatorConfig::on_worker_disconnected`. The event carries the worker ID,
-a human-readable reason, the in-flight `job_id` if there was one, whether that
-job was marked failed (`job_failed`), and whether it was requeued for another
-attempt (`job_retry_scheduled`). Lost workers are skipped during shutdown so
-the same failure is not reported twice.
-
-This detects process crashes and transport failures that close or reset the
-socket. It is not a heartbeat: a network partition that leaves the socket open
-is only noticed when a dispatched job does not reply. Set `--job-timeout` (or
-`CoordinatorConfig::job_timeout`) to bound that wait. A timed-out worker is
-treated exactly like a lost worker, so it is removed from scheduling, the
-in-flight attempt is retried or failed under the attempt limit, and
-`job_timeouts` increments alongside `workers_disconnected` and
-`transport_failures`. OS keepalive tuning is a separate concern.
-
-## Failure handling
-
-| Situation | Result |
-| --- | --- |
-| Worker returns `completed` | `ExperimentJobOutcome::ok = true`, metrics and optional trades copied |
-| Worker returns `invalid` | `ok = false`; terminal, with the validation message preserved; never retried |
-| Worker returns `failed` | Retried while attempts remain when `retry_failed_results` is true; otherwise terminal with the runtime message |
-| Worker returns `worker_error` | Retried while attempts remain; the error message is kept and `worker_errors` increments. When attempts are exhausted it becomes the terminal error |
-| Worker closes while idle | Worker is removed; no job fails and queued work stays available |
-| Worker closes before a job is sent | Job returns to the front of the queue without consuming an attempt; worker is removed |
-| Worker closes while running a job, or a reply cannot be parsed | Job returns to the queue when attempts remain, otherwise it is marked failed; that worker stops pulling jobs and the remaining queue stays available |
-| A dispatched job exceeds `job_timeout` | The worker is treated as lost; the attempt is retried while attempts remain and otherwise fails with a timeout message |
-| Attempt limit reached | Job is terminal as failed with the last attempt's error |
-| A result or error repeats a handled `message_id` | Ignored; the first outcome, state, and attempt count are unchanged and `duplicate_results` increments |
-| Every worker fails before finishing the queue | Pending jobs fail with `job was not dispatched to a worker`, or with the no-worker-remained message if they had already been attempted |
-
-Per-job strategy and data failures do not abort the run. Startup problems, such
-as being unable to bind, load the dataset, or read a valid `worker_ready`, throw
-and make the executable exit non-zero.
-
-Retries are bounded reassignments within one run. A deterministic runtime
-failure can consume every allowed attempt; use `--max-attempts 1` or
-`--no-retry-failed-results` to make such failures terminal immediately. Other
-queued jobs continue on healthy workers while a retry waits.
+`max_job_attempts` and `job_timeout` are runtime policy, not persisted. A relaunch
+with a lower attempt limit can immediately fail jobs whose persisted count is
+already at or above it.
 
 ## Aggregation and output
 
-Local threads and remote workers report into the same
-`ExperimentResultCollector`, keyed by the job's index in
-`ExperimentRequest::jobs`. A job is terminal as soon as it has either completed
-or failed; results may arrive in any order and the collector returns them in
-request order. Retryable attempts are logged and requeued but are **not**
-recorded, so each job still contributes exactly one terminal outcome. The run
-waits until every job is terminal, so a mix of successes and failures always
-produces one complete response document.
+Local threads and remote workers report into one `ExperimentResultCollector`
+indexed by request order. Retryable attempts are not recorded, so every job
+contributes exactly one terminal outcome. Results may arrive in any order; the
+returned document is deterministic.
 
-Result submission is idempotent. The coordinator records the `message_id` of
-every attempt it has handled and ignores any later `backtest_result` or
-`worker_error` that reuses one of those IDs. This matters because the
-coordinator reads one reply per dispatch: without suppression, a duplicate left
-in the socket would be consumed as the reply to the worker's next job. An
-ignored duplicate is never recorded, never advances a job state, never consumes
-an attempt, and does not count toward `results_received` or `worker_errors`; it
-only increments `duplicate_results`. A reply with an unknown `message_id` is
-still a correlation error and loses the worker. The collector also keeps the
-first terminal outcome if two paths reach it for the same job.
-
-If every worker stops while jobs are still queued, the coordinator marks those
-jobs failed before completing. This is the only point where the coordinator
-synthesizes outcomes; it never waits for work that no connected worker can
-perform. The text summary adds a `Job retries: N` line when at least one retry
-dispatch occurred, a `Duplicate results ignored: N` line when at least one
-duplicate was suppressed, and a `Job timeouts: N` line when at least one attempt
-exceeded its deadline.
-
-Results are aggregated by the same `build_experiment_result()` helper used by
-local runs. The returned `ExperimentResult` contains:
-
-- the experiment request settings and data summary;
-- per-job outcomes in request order;
-- status `completed`, `partial`, or `failed`;
-- best job, job counts, wall time, throughput, latency, and CPU statistics.
-
-The coordinator loads the dataset once to report the same data summary as a
-local run (`trading_days`, `first_date`, `last_date`). Workers still resolve
+The coordinator loads the dataset once for the response summary. Workers resolve
 `data.path` in their own environment, so version 1 assumes shared storage.
-
+`wall_seconds` and per-job durations include the distributed path, while
 `cpu_seconds`, `cpu_utilization`, and `cpu_efficiency` describe the coordinator
-process, not the aggregated worker processes. `wall_seconds` and per-job
-`duration_seconds` do include the distributed execution path.
+process only.
 
 Text output is a short summary. `--json` emits the full
 [`schema/experiment_result.schema.json`](../schema/experiment_result.schema.json)
-document, so existing consumers of `backtester --json` can read distributed
-runs without changes.
+document. The text form adds retry, duplicate, timeout, and recovery lines only
+when they apply.
+
+## Configuration
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `-e`, `--experiment PATH` | required | Experiment JSON; `-` reads stdin. |
+| `-l`, `--listen HOST:PORT` | `127.0.0.1:9000` | Bind address; port `0` is ephemeral. |
+| `-n`, `--workers N` | `1` | Workers to accept before dispatch. |
+| `--max-attempts N` | `3` | Maximum deliveries per job; `1` disables retries. |
+| `--no-retry-failed-results` | off | Retry only `worker_error` and transport/timeout failures, not `failed` results. |
+| `--job-timeout SECONDS` | `0` | Reply deadline per attempt; `0` disables it. |
+| `--state PATH` | off | Durable coordinator state and restart recovery. |
+| `--json` | off | Emit the aggregated result JSON. |
+
+The coordinator does not exit until it has accepted `--workers` connections.
+Start it before the workers.
 
 ## C++ API
 
@@ -310,64 +191,48 @@ runs without changes.
 #include "coordinator/coordinator.h"
 
 CoordinatorConfig config;
-config.listen_host = "0.0.0.0";
-config.listen_port = 9000;
 config.expected_workers = 4;
-config.max_job_attempts = 3;          // 1 disables retries
-config.retry_failed_results = true;   // "invalid" is never retried
-config.job_timeout = std::chrono::seconds(30); // 0 disables timeouts
-config.state_path = "run-state.json"; // empty disables persistence
+config.max_job_attempts = 3;
+config.retry_failed_results = true;
+config.job_timeout = std::chrono::seconds(30); // 0 disables
+config.state_path = "run-state.json";          // empty disables
 config.log = [](const std::string& line) { /* stderr */ };
 config.on_job_state_changed = [](const JobStateTransition& change) {
     // change.index, change.job_id, change.from, change.to
 };
 config.on_worker_disconnected = [](const WorkerDisconnectEvent& event) {
-    // event.worker_id, event.reason, event.job_id, event.job_failed
+    // event.worker_id, event.reason, event.job_id,
+    // event.job_failed, event.job_retry_scheduled
 };
 
 CoordinatorStats stats;
 const ExperimentResult result =
     run_distributed_experiment(request, config, &stats);
-
-// stats.job_states holds the final state per request job.
-// stats.job_attempts holds the delivery count per request job.
-// stats.job_retries counts deliveries after the first across the run.
-// stats.job_timeouts counts attempts that exceeded config.job_timeout.
-// stats.duplicate_results counts ignored repeat submissions.
-// stats.workers_disconnected counts workers lost during the run.
-// stats.state_recovered, jobs_recovered,
-// stats.jobs_requeued_after_restart, jobs_exhausted_after_restart, and
-// stats.persistence_errors describe the state file and this restart.
 ```
 
 `run_distributed_experiment()` blocks for the whole run. `on_listening` fires
-after the listening socket is bound and before the first accept, which is
-useful for tests that bind port `0` and need the actual port. `CoordinatorStats`
-reports registered workers, dispatched jobs, received results, worker errors,
-transport failures, lost workers, retry counts, job timeouts, duplicate
-submissions, recovery and persistence counters, per-job attempt counts, and the
-final coordinator-owned job state table.
+after bind and before the first accept, which is useful with port `0`.
 
-`max_job_attempts` must be at least 1 and `job_timeout` must not be negative; an
-invalid policy is rejected with `std::invalid_argument` before the listening
-socket is bound.
+`CoordinatorStats` reports:
+
+- dispatch and outcomes: `workers_registered`, `jobs_dispatched`,
+  `results_received`, `worker_errors`, `transport_failures`,
+  `workers_disconnected`, `job_retries`, `job_timeouts`, `duplicate_results`;
+- per job: `job_attempts`, `job_states`;
+- recovery: `state_recovered`, `jobs_recovered`,
+  `jobs_requeued_after_restart`, `jobs_exhausted_after_restart`,
+  `persistence_errors`.
+
+`max_job_attempts` must be at least 1 and `job_timeout` must not be negative.
+Invalid policy values throw `std::invalid_argument` before the socket is bound.
 
 ## Limitations
 
 - No authentication or encryption; use a trusted network or a tunnel.
-- Persistence is coordinator-local: the state file is not replicated, and two
-  coordinators must not share one path.
-- No worker reconnection. Retries are bounded reassignments within the current
-  run, not recovery of a permanently failed worker.
-- A job that is retried after a lost reply may run twice. Backtests are
-  read-only, so the coordinator accepts the duplicate work. Duplicate
-  *submissions* are suppressed by `message_id`, but a retry intentionally uses
-  a new ID and therefore runs again.
-- `job_timeout` is a per-attempt wall-clock deadline, not a heartbeat. It cannot
-  know whether a worker is still computing, so set it comfortably above the
-  slowest legitimate job. The timed-out worker is dropped; a result it sends
-  later is ignored, and version 1 does not reconnect it.
-- A worker with no in-flight job is still only checked for a closed socket, not
-  for a hang. Idle hangs are harmless because no work is waiting on them.
-- A worker must see the dataset at the same path as the coordinator.
-- One job in flight per worker; capacity is not advertised beyond availability.
+- Persistence is coordinator-local; two coordinators must not share one file.
+- No worker reconnection or heartbeat. A timeout covers a dispatched job only.
+- A timed-out worker is dropped without cancellation; a late result is ignored.
+- A retry after a lost reply may run the same backtest twice. Backtests are
+  read-only, so this only wastes work.
+- Every worker must see the dataset at the same path as the coordinator.
+- One job in flight per worker; workers do not advertise capacity.

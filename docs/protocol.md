@@ -372,68 +372,20 @@ does not enforce the supported version; it reports the version it saw so the
 server can echo `message_id` in that reply. The type-specific parsers and
 `parse_protocol_message_json()` do enforce version 1.
 
-## Transport notes
+## Transport and policy boundaries
 
-The worker loop consumes a `comm::MessageChannel` implementation that yields
-one JSON document per `receive()` and accepts one per `send()` (see
-[`communication.md`](communication.md) and [`worker.md`](worker.md)). After
-`connect()` the worker sends one `worker_ready` before it waits for work.
+The worker loop consumes a `comm::MessageChannel`: one JSON document per
+`receive()`/`send()` call. TCP framing, size limits, and close semantics are
+defined in [`communication.md`](communication.md), not in the message schema.
 
-The TCP adapter uses **length-prefixed frames**: a 4-byte big-endian unsigned
-payload length followed by exactly that many bytes of UTF-8 JSON. Frames must be
-non-empty and at most 8 MiB. Partial reads and writes are retried by the
-socket helpers, so a message may arrive in any number of TCP segments. The
-coordinator is the server; each worker is a client and sends `worker_ready`
-immediately after connecting. The worker executable selects TCP with
-`--connect HOST:PORT`; otherwise it keeps using the line-oriented
-`StdioTransport` for local development.
+The coordinator is the server and workers are clients. Scheduling, retries,
+timeouts, duplicate suppression, and restart recovery are coordinator-local and
+do not change the wire messages. See [`coordinator.md`](coordinator.md) for those
+policies and [`worker.md`](worker.md) for the worker lifecycle.
 
-The coordinator accepts the configured number of workers before dispatching.
-It then sends at most one job at a time to each worker. A worker's thread
-blocks on that job's result, so a worker is available for a new job exactly
-when its previous result has arrived. When the job queue is empty the
-coordinator sends one `shutdown` to every worker and aggregates the results.
-
-The transport owns concerns that are deliberately not in the message:
-
-- connection lifecycle and coordinator-side registration bookkeeping;
-- bounded in-flight jobs and dynamic assignment to available workers;
-- logging and metrics around network and execution time.
-
-The coordinator treats a closed or reset connection as a lost worker. It stops
-scheduling that worker, returns undelivered work to the queue, and either
-requeues the in-flight job (when attempts remain) or marks it failed. It then
-continues with the remaining workers. This detects process crashes and
-disconnects. The protocol has no heartbeat, but the coordinator can bound a
-dispatched job's reply with its local job timeout; on expiry it treats the worker
-as lost and applies the same retry or failure rules.
-
-Retries are coordinator-local: the wire messages are unchanged. Each attempt is
-a normal `backtest_job` with a new `message_id`; the worker does not need to
-know whether it is running a job for the first time. The coordinator bounds
-attempts, suppresses repeated result/error submissions by `message_id`, and
-never records more than one terminal outcome per request job.
-
-Coordinator crash recovery is also coordinator-local and does not change the
-protocol. With `--state PATH`, the coordinator stores job states, attempt
-counts, and terminal outcomes in a JSON file. On restart it reuses terminal
-outcomes, requeues jobs that were running, and regenerates `message_id` values
-for resumed attempts. Workers see ordinary `backtest_job` messages and cannot
-tell whether an attempt is new, retried, or resumed after a restart.
-
-Job timeouts are coordinator-local as well. The worker is not told that its
-attempt was abandoned, and the wire messages do not change. A timed-out worker
-is removed from scheduling; a result or error it sends later is ignored because
-the coordinator no longer reads that connection.
-
-Not yet implemented in version 1:
-
-- reconnection after a worker drops;
-- heartbeat-based liveness for a connected but unresponsive worker (a timeout
-  only covers a worker with a job in flight);
-- worker-side caching or deduplication of repeated jobs (an intentional retry
-  executes again under a new `message_id`);
-- authentication and encryption.
+Version 1 has no worker reconnection, heartbeat-based liveness, worker-side job
+deduplication, authentication, or encryption. The operational consequences are
+documented with the coordinator and worker limits.
 
 ## C++ usage
 

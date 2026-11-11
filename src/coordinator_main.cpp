@@ -181,8 +181,7 @@ std::size_t parse_job_timeout(const std::string& text) {
         );
     }
 
-    // A day is plenty; a larger value is almost certainly a typo and would
-    // overflow when converted to milliseconds.
+    // Cap at one day to keep the millisecond conversion bounded.
     if (value > 86400UL) {
         throw std::invalid_argument(
             "--job-timeout must be between 0 and 86400 seconds"

@@ -83,10 +83,8 @@ std::string resolve_error(const std::string& host, std::uint16_t port, int code)
 
 using Deadline = std::optional<std::chrono::steady_clock::time_point>;
 
-// Reads at least one byte, waiting until `deadline` when one is set. A single
-// read may still return fewer bytes than requested; the frame loops below keep
-// calling this until the frame is complete, so the deadline covers the whole
-// frame rather than each individual read.
+// Reads at least one byte, waiting until `deadline` when set. The frame loops
+// below repeat this, so the deadline covers the whole frame.
 std::size_t read_some_until(
     int descriptor,
     char* data,
@@ -101,7 +99,7 @@ std::size_t read_some_until(
                 throw TimeoutError("TCP receive timed out");
             }
 
-            // Round up so the final sub-millisecond slice is not cut short.
+            // Round up to avoid cutting the final sub-millisecond short.
             const auto remaining =
                 std::chrono::duration_cast<std::chrono::microseconds>(
                     *deadline - now
