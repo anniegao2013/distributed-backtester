@@ -2,6 +2,7 @@
 #include "experiment/experiment.h"
 #include "net/tcp.h"
 
+#include <chrono>
 #include <cstddef>
 #include <exception>
 #include <fstream>
@@ -36,6 +37,10 @@ constexpr const char* kUsage =
     "                          retried while attempts remain.\n"
     "      --state PATH        Persist job state to PATH and resume from an\n"
     "                          existing checkpoint for this experiment.\n"
+    "      --job-timeout SECONDS\n"
+    "                          Maximum time to wait for one job's result; the\n"
+    "                          worker is treated as lost on timeout. 0 disables\n"
+    "                          timeouts. Default: 0.\n"
     "      --json              Emit the aggregated result as JSON.\n"
     "  -h, --help              Show this help.\n"
     "\n"
@@ -80,6 +85,7 @@ struct Options {
     net::TcpEndpoint listen{"127.0.0.1", 9000};
     std::size_t workers = 1;
     std::size_t max_attempts = 3;
+    std::size_t job_timeout_seconds = 0;
 };
 
 std::size_t parse_worker_count(const std::string& text) {
@@ -149,6 +155,43 @@ std::size_t parse_attempt_count(const std::string& text) {
     return static_cast<std::size_t>(value);
 }
 
+std::size_t parse_job_timeout(const std::string& text) {
+    if (text.empty()) {
+        throw std::invalid_argument(
+            "--job-timeout requires a non-negative integer"
+        );
+    }
+
+    for (char c : text) {
+        if (c < '0' || c > '9') {
+            throw std::invalid_argument(
+                "--job-timeout requires a non-negative integer, got '" +
+                text + "'"
+            );
+        }
+    }
+
+    unsigned long value = 0;
+
+    try {
+        value = std::stoul(text);
+    } catch (const std::exception&) {
+        throw std::invalid_argument(
+            "--job-timeout value is out of range: '" + text + "'"
+        );
+    }
+
+    // A day is plenty; a larger value is almost certainly a typo and would
+    // overflow when converted to milliseconds.
+    if (value > 86400UL) {
+        throw std::invalid_argument(
+            "--job-timeout must be between 0 and 86400 seconds"
+        );
+    }
+
+    return static_cast<std::size_t>(value);
+}
+
 Options parse_options(int argc, char* argv[]) {
     Options options;
     bool has_experiment = false;
@@ -184,6 +227,14 @@ Options parse_options(int argc, char* argv[]) {
                     "--state requires a non-empty file path"
                 );
             }
+        } else if (argument == "--job-timeout") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    "--job-timeout requires a non-negative integer"
+                );
+            }
+
+            options.job_timeout_seconds = parse_job_timeout(argv[++i]);
         } else if (argument == "-e" || argument == "--experiment") {
             if (i + 1 >= argc) {
                 throw std::invalid_argument(
@@ -245,6 +296,10 @@ void print_result(
     if (stats.duplicate_results > 0) {
         std::cout << "Duplicate results ignored: "
                   << stats.duplicate_results << '\n';
+    }
+
+    if (stats.job_timeouts > 0) {
+        std::cout << "Job timeouts: " << stats.job_timeouts << '\n';
     }
 
     if (stats.state_recovered) {
@@ -310,6 +365,9 @@ int main(int argc, char* argv[]) {
         config.max_job_attempts = options.max_attempts;
         config.retry_failed_results = options.retry_failed_results;
         config.state_path = options.state_path;
+        config.job_timeout = std::chrono::milliseconds(
+            options.job_timeout_seconds * 1000
+        );
         config.log = [](const std::string& message) {
             std::cerr << "[coordinator] " << message << '\n';
         };

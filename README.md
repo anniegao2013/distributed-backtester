@@ -20,6 +20,7 @@ A C++17 framework for evaluating trading strategies against historical market da
 - **Distributed coordinator:** `backtester_coordinator` is a TCP server that accepts workers, expands an experiment into jobs, assigns each job to an available worker, collects results, and aggregates them into the normal experiment response. Slow jobs do not block other workers.
 - **Coordinator-owned job states:** Every job moves through `pending`, `running`, `completed`, or `failed` in a coordinator-side state table. Workers only report results; the coordinator is the single source of truth and exposes transitions to observers.
 - **Worker crash and disconnect detection:** The coordinator checks idle connections, requeues work that was never delivered, retries or fails the in-flight job of a worker that disappears, and continues on healthy workers. Lost workers are counted in stats and reported through a disconnect callback instead of being waited on forever.
+- **Per-job timeouts:** `--job-timeout SECONDS` (or `CoordinatorConfig::job_timeout`) bounds how long a dispatched job may wait for its reply. A timeout is treated as a lost worker: the attempt is retried or failed under the attempt bound, the worker is removed from scheduling, and `job_timeouts` is reported. The default of `0` waits indefinitely.
 - **Bounded job retries and reassignment:** Retryable failures (`worker_error`, transport/protocol loss, and optionally `backtest_result` status `failed`) are returned to the queue with a fresh `message_id`, offered to the next available worker, and failed only when the attempt limit is reached. Validation failures are terminal immediately, and per-job attempt counts plus a total retry count are reported.
 - **Idempotent result handling:** A repeated `backtest_result` or `worker_error` whose `message_id` was already handled is ignored. The first terminal outcome wins, so a duplicate cannot overwrite a result, advance a state twice, consume an extra attempt, or be mistaken for the next job's reply. Ignored duplicates are counted separately.
 - **Persistent job state and restart recovery:** With `--state PATH`, the coordinator checkpoints job states, attempt counts, and terminal outcomes to one versioned JSON file using atomic writes. A relaunch resumes the same experiment: terminal jobs are reused, jobs that were running are requeued, and jobs whose attempts were already exhausted fail with an explanatory message. A completed run returns immediately without waiting for workers.
@@ -141,6 +142,10 @@ same experiment instead of starting over.
 # Checkpoint progress. Re-running the same command resumes unfinished jobs.
 ./build/backtester_coordinator \
   --experiment experiments/demo.json --workers 2 --state run-state.json
+
+# Treat a job that runs longer than 60 seconds as a lost worker and retry it.
+./build/backtester_coordinator \
+  --experiment experiments/demo.json --workers 2 --job-timeout 60
 ```
 
 TCP frames are a 4-byte big-endian payload length followed by one UTF-8 JSON

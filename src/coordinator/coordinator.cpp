@@ -282,6 +282,7 @@ struct SharedState {
     std::atomic<std::size_t> workers_disconnected{0};
     std::atomic<std::size_t> job_retries{0};
     std::atomic<std::size_t> duplicate_results{0};
+    std::atomic<std::size_t> job_timeouts{0};
     std::atomic<std::size_t> persistence_errors{0};
 };
 
@@ -444,11 +445,54 @@ AttemptResult receive_result(
     const BacktestJobMessage& job,
     SharedState& shared,
     bool retry_failed_results,
+    std::chrono::milliseconds job_timeout,
     AttemptLedger& ledger,
     Logger& logger
 ) {
+    // One deadline covers the entire attempt, including any duplicate replies
+    // that are skipped while waiting for the correlated result.
+    const std::optional<std::chrono::steady_clock::time_point> deadline =
+        job_timeout.count() > 0
+            ? std::optional<std::chrono::steady_clock::time_point>(
+                  std::chrono::steady_clock::now() + job_timeout
+              )
+            : std::nullopt;
+
     for (;;) {
-        const std::optional<std::string> reply = worker.channel.receive();
+        std::optional<std::string> reply;
+
+        if (deadline) {
+            const auto now = std::chrono::steady_clock::now();
+
+            if (now >= *deadline) {
+                shared.job_timeouts.fetch_add(1);
+                throw net::TimeoutError(
+                    "worker '" + worker.worker_id +
+                    "' did not return a result for job '" +
+                    job.job.job_id + "' within " +
+                    std::to_string(job_timeout.count()) + " ms"
+                );
+            }
+
+            const auto remaining =
+                std::chrono::ceil<std::chrono::milliseconds>(
+                    *deadline - now
+                );
+
+            try {
+                reply = worker.channel.receive_for(remaining);
+            } catch (const net::TimeoutError&) {
+                shared.job_timeouts.fetch_add(1);
+                throw net::TimeoutError(
+                    "worker '" + worker.worker_id +
+                    "' did not return a result for job '" +
+                    job.job.job_id + "' within " +
+                    std::to_string(job_timeout.count()) + " ms"
+                );
+            }
+        } else {
+            reply = worker.channel.receive();
+        }
 
         if (!reply) {
             throw std::runtime_error(
@@ -753,6 +797,7 @@ void worker_loop(
                     queued->message,
                     shared,
                     config.retry_failed_results,
+                    config.job_timeout,
                     ledger,
                     logger
                 );
@@ -893,6 +938,12 @@ ExperimentResult run_distributed_experiment(
         );
     }
 
+    if (config.job_timeout.count() < 0) {
+        throw std::invalid_argument(
+            "Coordinator job timeout must not be negative"
+        );
+    }
+
     Logger logger(config);
 
     // Durable state, when enabled, is loaded before any socket is opened so a
@@ -1011,6 +1062,7 @@ ExperimentResult run_distributed_experiment(
         stats->transport_failures = shared.transport_failures.load();
         stats->workers_disconnected = shared.workers_disconnected.load();
         stats->duplicate_results = shared.duplicate_results.load();
+        stats->job_timeouts = shared.job_timeouts.load();
         stats->job_retries = shared.job_retries.load();
         stats->state_recovered = recovery.recovered;
         stats->jobs_recovered =

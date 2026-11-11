@@ -4,6 +4,7 @@
 #include "experiment/experiment.h"
 #include "net/tcp.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -69,6 +70,13 @@ struct CoordinatorConfig {
     // retryable while attempts remain.
     bool retry_failed_results = true;
 
+    // Maximum time one delivery attempt may wait for its reply after the job
+    // has been sent. A timeout is treated as a lost worker: the in-flight job
+    // is retried when attempts remain and failed otherwise, and the worker is
+    // removed from scheduling. Zero (the default) disables job timeouts and
+    // waits indefinitely, matching the behaviour of earlier versions.
+    std::chrono::milliseconds job_timeout{0};
+
     // Optional path to a durable coordinator state file. When empty (the
     // default) the run is entirely in memory. When set, the coordinator loads
     // a previous checkpoint for this experiment, resumes only the jobs that
@@ -115,6 +123,11 @@ struct CoordinatorStats {
     // already been handled. Duplicates never change a job outcome, advance a
     // state, or count as a received result.
     std::size_t duplicate_results = 0;
+
+    // Delivery attempts that exceeded job_timeout. Each timeout also counts as
+    // a disconnected worker and a transport failure, because the worker's
+    // reply can no longer be trusted to arrive for that attempt.
+    std::size_t job_timeouts = 0;
 
     // Number of dispatch attempts after the first, across all jobs. A job that
     // is requeued but never retried because every worker has gone is not

@@ -156,7 +156,8 @@ run_worker(transport, config);
 - JSON parsing and schema validation;
 - `message_id` correlation and duplicate suppression;
 - job assignment or worker registration;
-- retries, reconnection, heartbeats, and timeouts;
+- retry policy, reconnection, heartbeats, and timeout policy (a TCP channel
+  exposes a bounded receive, but the coordinator decides what a timeout means);
 - authentication and encryption.
 
 Those concerns are implemented in `protocol/`, `coordinator/`, and `worker/`.

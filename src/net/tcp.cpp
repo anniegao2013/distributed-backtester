@@ -2,8 +2,10 @@
 
 #include <arpa/inet.h>
 #include <cerrno>
+#include <chrono>
 #include <cctype>
 #include <cstring>
+#include <limits>
 #include <netdb.h>
 #include <poll.h>
 #include <stdexcept>
@@ -24,21 +26,6 @@ namespace {
     throw std::runtime_error(action + ": " + std::strerror(error));
 }
 
-std::size_t read_some(int descriptor, char* data, std::size_t size) {
-    for (;;) {
-        const ssize_t received = ::recv(descriptor, data, size, 0);
-
-        if (received < 0 && errno == EINTR) {
-            continue;
-        }
-
-        if (received < 0) {
-            throw_system_error("TCP receive failed", errno);
-        }
-
-        return static_cast<std::size_t>(received);
-    }
-}
 
 void send_all(int descriptor, const char* data, std::size_t size) {
     int flags = 0;
@@ -92,6 +79,138 @@ void set_no_sigpipe(int descriptor) {
 std::string resolve_error(const std::string& host, std::uint16_t port, int code) {
     return "Could not resolve " +
            format_tcp_endpoint({host, port}) + ": " + gai_strerror(code);
+}
+
+using Deadline = std::optional<std::chrono::steady_clock::time_point>;
+
+// Reads at least one byte, waiting until `deadline` when one is set. A single
+// read may still return fewer bytes than requested; the frame loops below keep
+// calling this until the frame is complete, so the deadline covers the whole
+// frame rather than each individual read.
+std::size_t read_some_until(
+    int descriptor,
+    char* data,
+    std::size_t size,
+    const Deadline& deadline
+) {
+    for (;;) {
+        if (deadline) {
+            const auto now = std::chrono::steady_clock::now();
+
+            if (now >= *deadline) {
+                throw TimeoutError("TCP receive timed out");
+            }
+
+            // Round up so the final sub-millisecond slice is not cut short.
+            const auto remaining =
+                std::chrono::duration_cast<std::chrono::microseconds>(
+                    *deadline - now
+                );
+            const auto rounded_ms = (remaining.count() + 999) / 1000;
+            const int wait_ms = rounded_ms > std::numeric_limits<int>::max()
+                ? std::numeric_limits<int>::max()
+                : static_cast<int>(rounded_ms);
+
+            pollfd descriptor_info{};
+            descriptor_info.fd = descriptor;
+            descriptor_info.events = POLLIN;
+
+            int ready = 0;
+
+            do {
+                ready = ::poll(&descriptor_info, 1, wait_ms);
+            } while (ready < 0 && errno == EINTR);
+
+            if (ready < 0) {
+                throw_system_error("TCP poll failed", errno);
+            }
+
+            if (ready == 0) {
+                throw TimeoutError("TCP receive timed out");
+            }
+        }
+
+        const ssize_t received = ::recv(descriptor, data, size, 0);
+
+        if (received < 0 && errno == EINTR) {
+            continue;
+        }
+
+        if (received < 0) {
+            throw_system_error("TCP receive failed", errno);
+        }
+
+        return static_cast<std::size_t>(received);
+    }
+}
+
+std::optional<std::string> receive_frame_until(
+    int descriptor,
+    const Deadline& deadline
+) {
+    unsigned char header[4] = {0, 0, 0, 0};
+    std::size_t header_bytes = 0;
+
+    while (header_bytes < sizeof(header)) {
+        const std::size_t received = read_some_until(
+            descriptor,
+            reinterpret_cast<char*>(header) + header_bytes,
+            sizeof(header) - header_bytes,
+            deadline
+        );
+
+        if (received == 0) {
+            if (header_bytes == 0) {
+                return std::nullopt;
+            }
+
+            throw std::runtime_error(
+                "TCP connection closed in the middle of a frame header"
+            );
+        }
+
+        header_bytes += received;
+    }
+
+    const std::uint32_t length =
+        (static_cast<std::uint32_t>(header[0]) << 24) |
+        (static_cast<std::uint32_t>(header[1]) << 16) |
+        (static_cast<std::uint32_t>(header[2]) << 8) |
+        static_cast<std::uint32_t>(header[3]);
+
+    if (length == 0) {
+        throw std::runtime_error("Received an empty TCP frame");
+    }
+
+    if (length > kMaxFrameBytes) {
+        throw std::runtime_error(
+            "Received TCP frame of " + std::to_string(length) +
+            " bytes, exceeding the " +
+            std::to_string(kMaxFrameBytes) + "-byte limit"
+        );
+    }
+
+    std::string payload(length, '\0');
+    std::size_t payload_bytes = 0;
+
+    while (payload_bytes < payload.size()) {
+        const std::size_t received = read_some_until(
+            descriptor,
+            payload.data() + payload_bytes,
+            payload.size() - payload_bytes,
+            deadline
+        );
+
+        if (received == 0) {
+            throw std::runtime_error(
+                "TCP connection closed in the middle of a frame"
+            );
+        }
+
+        payload_bytes += received;
+    }
+
+    return payload;
 }
 
 }  // namespace
@@ -254,67 +373,20 @@ std::optional<std::string> TcpSocket::receive_frame() {
         throw std::runtime_error("TCP socket is not connected");
     }
 
-    unsigned char header[4] = {0, 0, 0, 0};
-    std::size_t header_bytes = 0;
+    return receive_frame_until(descriptor_, std::nullopt);
+}
 
-    while (header_bytes < sizeof(header)) {
-        const std::size_t received = read_some(
-            descriptor_,
-            reinterpret_cast<char*>(header) + header_bytes,
-            sizeof(header) - header_bytes
-        );
-
-        if (received == 0) {
-            if (header_bytes == 0) {
-                return std::nullopt;
-            }
-
-            throw std::runtime_error(
-                "TCP connection closed in the middle of a frame header"
-            );
-        }
-
-        header_bytes += received;
+std::optional<std::string> TcpSocket::receive_frame_for(
+    std::chrono::milliseconds timeout
+) {
+    if (!valid()) {
+        throw std::runtime_error("TCP socket is not connected");
     }
 
-    const std::uint32_t length =
-        (static_cast<std::uint32_t>(header[0]) << 24) |
-        (static_cast<std::uint32_t>(header[1]) << 16) |
-        (static_cast<std::uint32_t>(header[2]) << 8) |
-        static_cast<std::uint32_t>(header[3]);
-
-    if (length == 0) {
-        throw std::runtime_error("Received an empty TCP frame");
-    }
-
-    if (length > kMaxFrameBytes) {
-        throw std::runtime_error(
-            "Received TCP frame of " + std::to_string(length) +
-            " bytes, exceeding the " +
-            std::to_string(kMaxFrameBytes) + "-byte limit"
-        );
-    }
-
-    std::string payload(length, '\0');
-    std::size_t payload_bytes = 0;
-
-    while (payload_bytes < payload.size()) {
-        const std::size_t received = read_some(
-            descriptor_,
-            payload.data() + payload_bytes,
-            payload.size() - payload_bytes
-        );
-
-        if (received == 0) {
-            throw std::runtime_error(
-                "TCP connection closed in the middle of a frame"
-            );
-        }
-
-        payload_bytes += received;
-    }
-
-    return payload;
+    return receive_frame_until(
+        descriptor_,
+        std::chrono::steady_clock::now() + timeout
+    );
 }
 
 bool TcpSocket::peer_closed() const noexcept {

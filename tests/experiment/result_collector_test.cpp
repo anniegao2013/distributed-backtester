@@ -21,6 +21,25 @@ void expect(bool condition, const std::string& message) {
     }
 }
 
+// Joins a thread during stack unwinding so a failed assertion reports the
+// failure instead of terminating the process on a joinable std::thread.
+class ThreadJoiner {
+public:
+    explicit ThreadJoiner(std::thread& thread) : thread_(thread) {}
+
+    ~ThreadJoiner() {
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+    ThreadJoiner(const ThreadJoiner&) = delete;
+    ThreadJoiner& operator=(const ThreadJoiner&) = delete;
+
+private:
+    std::thread& thread_;
+};
+
 ExperimentJob make_job(std::size_t index) {
     ExperimentJob job;
     job.job_id = "job-" + std::to_string(index);
@@ -110,19 +129,21 @@ void test_wait_blocks_until_every_job_is_terminal() {
 
     std::promise<void> started;
     std::future<void> ready = started.get_future();
-    std::atomic<bool> finished{false};
+    std::promise<void> finished_promise;
+    std::future<void> finished = finished_promise.get_future();
 
     std::thread waiter([&] {
         started.set_value();
         collector.wait();
-        finished.store(true);
+        finished_promise.set_value();
     });
+    ThreadJoiner waiter_joiner(waiter);
 
     ready.wait();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     expect(
-        !finished.load(),
+        finished.wait_for(std::chrono::milliseconds(50)) ==
+            std::future_status::timeout,
         "wait must block while any job is still pending"
     );
 
@@ -130,7 +151,8 @@ void test_wait_blocks_until_every_job_is_terminal() {
     waiter.join();
 
     expect(
-        finished.load(),
+        finished.wait_for(std::chrono::milliseconds(0)) ==
+            std::future_status::ready,
         "wait must return once the final job becomes terminal"
     );
 }

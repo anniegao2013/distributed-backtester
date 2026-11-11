@@ -214,6 +214,8 @@ touches the wire.
 ## What is not here yet
 
 - Connection timeouts and automatic reconnection.
+- Job cancellation: the coordinator may abandon an attempt after its local job
+  timeout, but the worker keeps computing and is not told to stop.
 - Heartbeats and worker capacity advertisement.
 - Duplicate suppression by `message_id` on the worker; the coordinator suppresses
   duplicate *submissions*, and a repeated job is executed again.

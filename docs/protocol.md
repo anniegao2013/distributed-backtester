@@ -404,8 +404,9 @@ The coordinator treats a closed or reset connection as a lost worker. It stops
 scheduling that worker, returns undelivered work to the queue, and either
 requeues the in-flight job (when attempts remain) or marks it failed. It then
 continues with the remaining workers. This detects process crashes and
-disconnects; the protocol has no heartbeat, so a worker that stays connected but
-stops responding is not detected without a job timeout.
+disconnects. The protocol has no heartbeat, but the coordinator can bound a
+dispatched job's reply with its local job timeout; on expiry it treats the worker
+as lost and applies the same retry or failure rules.
 
 Retries are coordinator-local: the wire messages are unchanged. Each attempt is
 a normal `backtest_job` with a new `message_id`; the worker does not need to
@@ -420,11 +421,16 @@ outcomes, requeues jobs that were running, and regenerates `message_id` values
 for resumed attempts. Workers see ordinary `backtest_job` messages and cannot
 tell whether an attempt is new, retried, or resumed after a restart.
 
+Job timeouts are coordinator-local as well. The worker is not told that its
+attempt was abandoned, and the wire messages do not change. A timed-out worker
+is removed from scheduling; a result or error it sends later is ignored because
+the coordinator no longer reads that connection.
+
 Not yet implemented in version 1:
 
-- job timeouts;
 - reconnection after a worker drops;
-- heartbeat-based liveness for a connected but unresponsive worker;
+- heartbeat-based liveness for a connected but unresponsive worker (a timeout
+  only covers a worker with a job in flight);
 - worker-side caching or deduplication of repeated jobs (an intentional retry
   executes again under a new `message_id`);
 - authentication and encryption.

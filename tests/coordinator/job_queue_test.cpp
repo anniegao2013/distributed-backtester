@@ -23,6 +23,25 @@ void expect(bool condition, const std::string& message) {
     }
 }
 
+// Joins a thread during stack unwinding so a failed assertion reports the
+// failure instead of terminating the process on a joinable std::thread.
+class ThreadJoiner {
+public:
+    explicit ThreadJoiner(std::thread& thread) : thread_(thread) {}
+
+    ~ThreadJoiner() {
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+    ThreadJoiner(const ThreadJoiner&) = delete;
+    ThreadJoiner& operator=(const ThreadJoiner&) = delete;
+
+private:
+    std::thread& thread_;
+};
+
 QueuedJob make_job(std::size_t index) {
     QueuedJob job;
     job.index = index;
@@ -69,27 +88,33 @@ void test_pop_blocks_until_push() {
 
     std::promise<void> started;
     std::future<void> ready = started.get_future();
-    std::atomic<bool> completed{false};
+    std::promise<void> completed_promise;
+    std::future<void> completed = completed_promise.get_future();
     std::optional<QueuedJob> result;
 
     std::thread consumer([&] {
         started.set_value();
         result = queue.pop();
-        completed.store(true);
+        completed_promise.set_value();
     });
+    ThreadJoiner consumer_joiner(consumer);
 
     ready.wait();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     expect(
-        !completed.load(),
+        completed.wait_for(std::chrono::milliseconds(50)) ==
+            std::future_status::timeout,
         "pop must block while the queue is open and empty"
     );
 
     queue.push(make_job(7));
     consumer.join();
 
-    expect(completed.load(), "push must wake a blocked pop");
+    expect(
+        completed.wait_for(std::chrono::milliseconds(0)) ==
+            std::future_status::ready,
+        "push must wake a blocked pop"
+    );
     expect(result.has_value(), "the woken pop must return the pushed job");
     expect(result->index == 7, "the woken pop must return the new job");
 
@@ -101,27 +126,33 @@ void test_close_wakes_blocked_pop() {
 
     std::promise<void> started;
     std::future<void> ready = started.get_future();
-    std::atomic<bool> completed{false};
+    std::promise<void> completed_promise;
+    std::future<void> completed = completed_promise.get_future();
     std::optional<QueuedJob> result;
 
     std::thread consumer([&] {
         started.set_value();
         result = queue.pop();
-        completed.store(true);
+        completed_promise.set_value();
     });
+    ThreadJoiner consumer_joiner(consumer);
 
     ready.wait();
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
     expect(
-        !completed.load(),
+        completed.wait_for(std::chrono::milliseconds(50)) ==
+            std::future_status::timeout,
         "pop must block while the queue is open and empty"
     );
 
     queue.close();
     consumer.join();
 
-    expect(completed.load(), "close must wake a blocked pop");
+    expect(
+        completed.wait_for(std::chrono::milliseconds(0)) ==
+            std::future_status::ready,
+        "close must wake a blocked pop"
+    );
     expect(
         !result.has_value(),
         "a woken pop must report exhaustion when no jobs remain"
