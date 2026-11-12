@@ -96,7 +96,10 @@ python3 benchmarks/benchmark_execution.py
 
 For wall-clock, throughput, and speedup across concurrency levels, run
 `python3 benchmarks/measure_scaling.py`; its report is
-[`benchmarks/scaling.md`](benchmarks/scaling.md).
+[`benchmarks/scaling.md`](benchmarks/scaling.md). Then run
+`python3 benchmarks/analyze_scheduling.py` for scheduling overhead, idle time,
+work inflation, and per-worker utilization in
+[`benchmarks/scheduling.md`](benchmarks/scheduling.md).
 
 ## Running
 

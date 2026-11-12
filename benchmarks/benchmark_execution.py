@@ -27,6 +27,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import signal
 import socket
 import statistics
@@ -313,6 +314,54 @@ def results_digest(document: dict[str, Any]) -> str:
     return digest.hexdigest()
 
 
+def worker_sort_key(worker_id: str) -> tuple[int, str]:
+    match = re.search(r"(\d+)$", worker_id)
+    return (int(match.group(1)) if match else 0, worker_id)
+
+
+def parse_worker_stats(
+    coordinator_log: str,
+    document: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Maps coordinator dispatch lines to worker-side job durations.
+
+    This is only available for distributed runs. It lets the scheduling
+    analysis measure per-worker busy time and job balance, not just the
+    aggregate sum of job durations.
+    """
+    durations = {
+        result["job_id"]: float(result.get("duration_seconds", 0.0))
+        for result in document.get("results", [])
+    }
+    assignments = re.findall(
+        r"assigning job '([^']+)' to worker '([^']+)'",
+        coordinator_log,
+    )
+    wall_seconds = float(
+        document.get("summary", {}).get("wall_seconds", 0.0)
+    )
+
+    by_worker: dict[str, dict[str, Any]] = {}
+
+    for job_id, worker_id in assignments:
+        entry = by_worker.setdefault(
+            worker_id,
+            {"worker_id": worker_id, "jobs": 0, "busy_seconds": 0.0},
+        )
+        entry["jobs"] += 1
+        entry["busy_seconds"] += durations.get(job_id, 0.0)
+
+    for entry in by_worker.values():
+        entry["utilization"] = (
+            entry["busy_seconds"] / wall_seconds if wall_seconds > 0 else 0.0
+        )
+
+    return [
+        by_worker[worker_id]
+        for worker_id in sorted(by_worker, key=worker_sort_key)
+    ]
+
+
 def summarize(
     document: dict[str, Any],
     harness_seconds: float,
@@ -559,7 +608,9 @@ def run_processes(
                 f"stderr:\n{stderr[-4000:]}"
             ) from error
 
-    return summarize(document, harness_seconds)
+    record = summarize(document, harness_seconds)
+    record["worker_stats"] = parse_worker_stats(stderr, document)
+    return record
 
 
 def run_mode(
