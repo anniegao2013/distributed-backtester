@@ -94,6 +94,10 @@ cmake --build build/release -j
 python3 benchmarks/benchmark_execution.py
 ```
 
+For wall-clock, throughput, and speedup across concurrency levels, run
+`python3 benchmarks/measure_scaling.py`; its report is
+[`benchmarks/scaling.md`](benchmarks/scaling.md).
+
 ## Running
 
 Local execution is the default:
