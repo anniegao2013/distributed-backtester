@@ -45,8 +45,9 @@ each message:
 5. **Validate.** For a job, the worker checks that `strategy_type` is registered
    and that the parameter set is complete and in range. This is worker-side
    validation: the protocol layer accepts any finite parameter map.
-6. **Run.** `load_market_data()` reads the dataset, `create_strategy()` builds
-   the strategy, and `run_backtest()` executes the existing engine.
+6. **Run.** The per-worker dataset cache returns the parsed bars for
+   `job.data.path`, loading and caching them on first use. `create_strategy()`
+   builds the strategy, and `run_backtest()` executes the existing engine.
 7. **Serialize.** `make_result_message()` echoes the job identity and
    `backtest_result_to_json()` validates and writes the reply.
 8. **Send.** `send()` hands exactly one message back to the coordinator.
@@ -56,6 +57,18 @@ A `shutdown` takes effect between jobs. The worker finishes the job it is
 already running, sends its result, and then exits without replying to the
 shutdown. If jobs are already queued, they are not processed. An invalid
 shutdown payload produces a `worker_error` and does not stop the loop.
+
+## Dataset cache
+
+Each worker keeps one `DatasetCache` for the lifetime of its loop. It stores
+parsed `std::vector<MarketBar>` values keyed by normalized path plus file size
+and modification time. A job whose dataset is already cached skips CSV parsing;
+a rewritten file invalidates its entry. The cache holds at most four datasets,
+evicting the least recently used entry, which covers typical multi-dataset
+experiments without unbounded memory growth.
+
+The cache is worker-local and single-threaded because a worker runs one job at a
+time. It is not shared across worker processes.
 
 ## Error mapping
 
@@ -85,7 +98,9 @@ or because the worker failed outside a job result; it is retryable while
 attempts remain.
 
 `duration_seconds` measures worker-side validation, data loading, and
-execution. It excludes queueing and transport time.
+execution. It excludes queueing and transport time. For a cache hit, data
+loading is only the cache lookup; the first job for a dataset pays the CSV
+parse.
 
 ## Transport
 
@@ -186,6 +201,11 @@ bad job; the returned `WorkerJobOutcome` carries `completed`, `failed`, or
 `invalid` plus the metrics, trades, or structured error. This is useful for
 testing or for embedding the worker loop in another process.
 
+The cache-aware overload `execute_backtest_job(const BacktestJob&,
+DatasetCache&)` lets an embedding caller reuse parsed datasets across jobs;
+`run_worker()` uses it with one cache per session. The one-argument overload
+keeps its previous behavior by using a throwaway cache.
+
 `make_result_message()` builds the reply for a job, attaching metrics and trades
 only for a completed run and an error otherwise. Both directions then go through
 the protocol validators, so an inconsistent message is rejected before it
@@ -197,6 +217,8 @@ touches the wire.
 - Job cancellation: the coordinator may abandon an attempt after its timeout,
   but the worker is not told to stop.
 - Heartbeats, capacity advertisement, and multiple jobs in flight per worker.
+- Dataset preloading and a cache shared across worker processes; each worker
+  loads lazily and caches only within its own process.
 - Worker-side persistence or recovery; job state belongs to the coordinator.
 
 The coordinator owns registration, scheduling, retries, timeouts, and

@@ -69,6 +69,7 @@ add_library(backtester_core
     src/comm/tcp_channel.cpp
 
     # Worker loop and its transports
+    src/worker/dataset_cache.cpp
     src/worker/stdio_transport.cpp
     src/worker/worker.cpp
     src/worker/worker_job.cpp
@@ -199,6 +200,11 @@ add_backtester_test(job_queue_tests coordinator/job_queue_test.cpp)
 add_backtester_test(job_state_tests coordinator/job_state_test.cpp)
 add_backtester_test(
     persistent_state_tests coordinator/persistent_state_test.cpp
+)
+
+# Worker dataset cache
+add_backtester_test(
+    dataset_cache_tests worker/dataset_cache_test.cpp
 )
 
 # Worker loop, job execution, and development transport
