@@ -81,6 +81,19 @@ The suite covers core accounting invariants, protocol validation, TCP framing,
 parallel execution, coordinator scheduling and recovery, uneven workloads, and
 end-to-end executable runs.
 
+## Benchmarks
+
+`benchmarks/benchmark_execution.py` runs the same 240-job sweep sequentially,
+across local threads, and across a coordinator plus worker processes, then
+writes wall times, throughput, speedups, and latency to
+[`benchmarks/results.md`](benchmarks/results.md).
+
+```bash
+cmake -S . -B build/release -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release -j
+python3 benchmarks/benchmark_execution.py
+```
+
 ## Running
 
 Local execution is the default:
@@ -123,6 +136,7 @@ src/                  Implementations and the three executables
   worker_main.cpp
 tests/                Unit, integration, and end-to-end tests
 experiments/          Example experiment requests
+benchmarks/           Execution-mode benchmark harness and captured results
 schema/               Request, response, and protocol JSON Schemas
 examples/protocol/    Example protocol messages
 docs/                 Architecture and reference documentation
