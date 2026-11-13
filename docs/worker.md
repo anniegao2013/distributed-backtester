@@ -216,7 +216,9 @@ touches the wire.
 - Connection timeouts and automatic reconnection.
 - Job cancellation: the coordinator may abandon an attempt after its timeout,
   but the worker is not told to stop.
-- Heartbeats, capacity advertisement, and multiple jobs in flight per worker.
+- Heartbeats, capacity advertisement, and worker-side concurrency. The
+  coordinator may prefetch several jobs into a worker's socket, but the worker
+  still executes and replies to them one at a time.
 - Dataset preloading and a cache shared across worker processes; each worker
   loads lazily and caches only within its own process.
 - Worker-side persistence or recovery; job state belongs to the coordinator.

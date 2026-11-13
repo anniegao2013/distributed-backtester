@@ -13,6 +13,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <deque>
 #include <exception>
 #include <functional>
 #include <mutex>
@@ -680,6 +681,101 @@ bool schedule_retry(
     return true;
 }
 
+// Prefetch target for one worker. While the queue is deep a worker may hold up
+// to `configured` jobs, so its next job is already buffered when the current
+// one finishes. Near the tail the target shrinks to an even share and finally
+// to one job, so a single worker cannot hoard the last few jobs while its peers
+// sit idle.
+std::size_t dispatch_target(
+    std::size_t queued_jobs,
+    std::size_t configured,
+    std::size_t workers
+) {
+    if (configured <= 1) {
+        return 1;
+    }
+
+    const std::size_t divisor = std::max<std::size_t>(1, workers);
+    const std::size_t share = (queued_jobs + divisor - 1) / divisor;
+
+    return std::max<std::size_t>(
+        1,
+        std::min(configured, share)
+    );
+}
+
+// What happened to the first job of a lost pipeline, for the disconnect
+// observer. Later prefetched jobs are handled the same way but are not reported
+// individually.
+struct OutstandingLoss {
+    std::string job_id;
+    bool job_failed = false;
+    bool retry_scheduled = false;
+};
+
+// Requeues or terminally fails every job assigned to a worker that has been
+// declared lost. Jobs are handled in dispatch order. The first entry is the job
+// the worker was executing; the rest were prefetched and have consumed an
+// attempt even though their replies never arrived.
+OutstandingLoss handle_lost_batch(
+    std::deque<QueuedJob>& outstanding,
+    const std::string& reason,
+    const CoordinatorConfig& config,
+    JobQueue& queue,
+    JobStateTracker& states,
+    JobStateObserver& state_observer,
+    ExperimentResultCollector& results,
+    StatePersister& persister,
+    SharedState& shared,
+    Logger& logger
+) {
+    OutstandingLoss report;
+    bool first = true;
+
+    while (!outstanding.empty()) {
+        QueuedJob queued = std::move(outstanding.front());
+        outstanding.pop_front();
+
+        const std::string job_id = queued.message.job.job_id;
+
+        if (schedule_retry(
+                queued,
+                config,
+                reason,
+                queue,
+                states,
+                state_observer,
+                logger
+            )) {
+            persister.persist();
+
+            if (first) {
+                report.job_id = job_id;
+                report.retry_scheduled = true;
+            }
+        } else {
+            if (results.record(
+                    queued.index,
+                    failed_outcome(queued.message.job, reason)
+                )) {
+                state_observer.publish(states.mark_failed(queued.index));
+                persister.persist();
+            } else {
+                shared.duplicate_results.fetch_add(1);
+            }
+
+            if (first) {
+                report.job_id = job_id;
+                report.job_failed = true;
+            }
+        }
+
+        first = false;
+    }
+
+    return report;
+}
+
 void worker_loop(
     WorkerConnection& worker,
     JobQueue& queue,
@@ -695,105 +791,244 @@ void worker_loop(
     JobGate& gate,
     Logger& logger
 ) {
-    for (;;) {
-        gate.acquire();
+    // Jobs sent to this worker but not answered yet. Workers execute one job at
+    // a time and reply in dispatch order, so this is a FIFO pipeline.
+    std::deque<QueuedJob> outstanding;
+    bool holds_permit = false;
 
-        // A worker that dies while idle closes its socket, but the coordinator
-        // is not reading from it. Check liveness before waiting so the loss is
-        // noticed immediately instead of when the next job is assigned.
-        if (worker.channel.peer_closed()) {
+    const auto release_permit = [&]() {
+        if (holds_permit) {
             gate.release();
-            report_worker_lost(
-                worker,
-                "connection closed while waiting for work",
-                "",
-                false,
-                false,
-                shared,
-                disconnect_observer,
-                logger
-            );
-            return;
+            holds_permit = false;
         }
+    };
 
-        std::optional<QueuedJob> queued =
-            queue.pop_for(kWorkerLivenessPollInterval);
+    // Records a successful delivery. The job is running only once it has been
+    // handed to the worker, and the attempt counter advances only for
+    // deliveries that actually happened.
+    const auto assign = [&](QueuedJob& queued) {
+        const std::size_t index = queued.index;
+        queued.attempts = attempts.record_attempt(index);
 
-        if (!queued) {
-            gate.release();
-
-            // A closed, empty queue is not enough to stop: another worker may
-            // still fail a job and requeue it for a retry. Stay available until
-            // every job has a terminal outcome.
-            if (queue.closed() && results.complete()) {
-                return;
-            }
-
-            continue;
-        }
-
-        // The worker may have dropped between the check above and the pop.
-        if (worker.channel.peer_closed()) {
-            queue.requeue_front(std::move(*queued));
-            gate.release();
-            report_worker_lost(
-                worker,
-                "connection closed before a job could be assigned",
-                "",
-                false,
-                false,
-                shared,
-                disconnect_observer,
-                logger
-            );
-            return;
-        }
-
-        const std::size_t index = queued->index;
-        const std::string job_id = queued->message.job.job_id;
-
-        try {
-            send_job(worker, queued->message, shared);
-        } catch (const std::exception& error) {
-            // The job never reached the worker, so no attempt was consumed. It
-            // is still pending and can be offered to a healthy worker.
-            queue.requeue_front(std::move(*queued));
-            gate.release();
-            report_worker_lost(
-                worker,
-                "could not assign work: " + std::string(error.what()),
-                "",
-                false,
-                false,
-                shared,
-                disconnect_observer,
-                logger
-            );
-            return;
-        }
-
-        // The job is running only once it has been handed to the worker. The
-        // attempt counter advances only for deliveries that actually happened.
-        queued->attempts = attempts.record_attempt(index);
-
-        if (queued->attempts > 1) {
+        if (queued.attempts > 1) {
             shared.job_retries.fetch_add(1);
         }
 
         logger.log(
-            "assigning job '" + job_id + "' to worker '" +
-            worker.worker_id + "' (attempt " +
-            std::to_string(queued->attempts) + " of " +
+            "assigning job '" + queued.message.job.job_id +
+            "' to worker '" + worker.worker_id + "' (attempt " +
+            std::to_string(queued.attempts) + " of " +
             std::to_string(config.max_job_attempts) + ")"
         );
         state_observer.publish(states.mark_running(index));
         persister.persist();
+    };
+
+    for (;;) {
+        // A worker that dies while idle closes its socket, but the coordinator
+        // is not reading from it. Check liveness before waiting so the loss is
+        // noticed immediately instead of when the next job is assigned. Any
+        // prefetched jobs are treated as lost attempts.
+        if (worker.channel.peer_closed()) {
+            const OutstandingLoss loss = handle_lost_batch(
+                outstanding,
+                "connection closed while waiting for work",
+                config,
+                queue,
+                states,
+                state_observer,
+                results,
+                persister,
+                shared,
+                logger
+            );
+
+            release_permit();
+            report_worker_lost(
+                worker,
+                "connection closed while waiting for work",
+                loss.job_id,
+                loss.job_failed,
+                loss.retry_scheduled,
+                shared,
+                disconnect_observer,
+                logger
+            );
+            return;
+        }
+
+        if (outstanding.empty()) {
+            if (!holds_permit) {
+                gate.acquire();
+                holds_permit = true;
+            }
+
+            std::optional<QueuedJob> queued =
+                queue.pop_for(kWorkerLivenessPollInterval);
+
+            if (!queued) {
+                release_permit();
+
+                // A closed, empty queue is not enough to stop: another worker
+                // may still fail a job and requeue it for a retry. Stay
+                // available until every job has a terminal outcome.
+                if (queue.closed() && results.complete()) {
+                    return;
+                }
+
+                continue;
+            }
+
+            // The worker may have dropped between the check above and the pop.
+            if (worker.channel.peer_closed()) {
+                queue.requeue_front(std::move(*queued));
+                release_permit();
+                report_worker_lost(
+                    worker,
+                    "connection closed before a job could be assigned",
+                    "",
+                    false,
+                    false,
+                    shared,
+                    disconnect_observer,
+                    logger
+                );
+                return;
+            }
+
+            try {
+                send_job(worker, queued->message, shared);
+            } catch (const std::exception& error) {
+                // The job never reached the worker, so no attempt was consumed.
+                // It is still pending and can be offered to a healthy worker.
+                queue.requeue_front(std::move(*queued));
+                release_permit();
+                report_worker_lost(
+                    worker,
+                    "could not assign work: " + std::string(error.what()),
+                    "",
+                    false,
+                    false,
+                    shared,
+                    disconnect_observer,
+                    logger
+                );
+                return;
+            }
+
+            assign(*queued);
+            outstanding.push_back(std::move(*queued));
+        }
+
+        // Prefetch ahead of the worker's next completion. The target adapts to
+        // the queue depth so the tail stays balanced.
+        while (!outstanding.empty()) {
+            const std::size_t target = dispatch_target(
+                queue.size(),
+                config.dispatch_batch_size,
+                config.expected_workers
+            );
+
+            if (outstanding.size() >= target) {
+                break;
+            }
+
+            std::optional<QueuedJob> queued =
+                queue.pop_for(std::chrono::milliseconds(0));
+
+            if (!queued) {
+                break;
+            }
+
+            if (worker.channel.peer_closed()) {
+                queue.requeue_front(std::move(*queued));
+
+                const OutstandingLoss loss = handle_lost_batch(
+                    outstanding,
+                    "connection closed before a job could be assigned",
+                    config,
+                    queue,
+                    states,
+                    state_observer,
+                    results,
+                    persister,
+                    shared,
+                    logger
+                );
+
+                release_permit();
+                report_worker_lost(
+                    worker,
+                    "connection closed before a job could be assigned",
+                    loss.job_id,
+                    loss.job_failed,
+                    loss.retry_scheduled,
+                    shared,
+                    disconnect_observer,
+                    logger
+                );
+                return;
+            }
+
+            try {
+                send_job(worker, queued->message, shared);
+            } catch (const std::exception& error) {
+                // Nothing was consumed by the failed send, but jobs already in
+                // the pipeline are unreachable now.
+                queue.requeue_front(std::move(*queued));
+
+                const std::string reason =
+                    "could not assign work: " + std::string(error.what());
+                const OutstandingLoss loss = handle_lost_batch(
+                    outstanding,
+                    reason,
+                    config,
+                    queue,
+                    states,
+                    state_observer,
+                    results,
+                    persister,
+                    shared,
+                    logger
+                );
+
+                release_permit();
+                report_worker_lost(
+                    worker,
+                    reason,
+                    loss.job_id,
+                    loss.job_failed,
+                    loss.retry_scheduled,
+                    shared,
+                    disconnect_observer,
+                    logger
+                );
+                return;
+            }
+
+            assign(*queued);
+            outstanding.push_back(std::move(*queued));
+        }
+
+        if (outstanding.empty()) {
+            // Another worker removed the work before this pipeline could fill.
+            release_permit();
+            continue;
+        }
+
+        // The front job is the one the worker is executing now. Replies arrive
+        // in dispatch order, so it is also the next reply to consume.
+        QueuedJob queued = std::move(outstanding.front());
+        outstanding.pop_front();
+
+        const std::size_t index = queued.index;
+        const std::string job_id = queued.message.job.job_id;
 
         try {
             AttemptResult attempt =
                 receive_result(
                     worker,
-                    queued->message,
+                    queued.message,
                     shared,
                     config.retry_failed_results,
                     config.job_timeout,
@@ -813,7 +1048,7 @@ void worker_loop(
 
             if (attempt.retryable &&
                 schedule_retry(
-                    *queued,
+                    queued,
                     config,
                     attempt.outcome.error,
                     queue,
@@ -824,7 +1059,10 @@ void worker_loop(
                 // The job is back in the queue with a higher attempt count.
                 // Persist that before another worker can claim it.
                 persister.persist();
-                gate.release();
+
+                if (outstanding.empty()) {
+                    release_permit();
+                }
                 continue;
             }
 
@@ -846,49 +1084,43 @@ void worker_loop(
                     job_id + "'"
                 );
             }
-
-            gate.release();
         } catch (const std::exception& error) {
-            // The job was delivered but its reply is gone, or the reply could
-            // not be correlated. The worker is removed from scheduling. The
-            // job returns to the queue when attempts remain.
-            const bool retry_scheduled = schedule_retry(
-                *queued,
-                config,
+            // The front job was delivered but its reply is gone, or the reply
+            // could not be correlated. The worker is removed from scheduling.
+            // Every job already prefetched into its pipeline also consumed an
+            // attempt and returns to the queue while attempts remain.
+            outstanding.push_front(std::move(queued));
+
+            const OutstandingLoss loss = handle_lost_batch(
+                outstanding,
                 error.what(),
+                config,
                 queue,
                 states,
                 state_observer,
+                results,
+                persister,
+                shared,
                 logger
             );
 
-            if (!retry_scheduled) {
-                if (results.record(
-                        index,
-                        failed_outcome(queued->message.job, error.what())
-                    )) {
-                    state_observer.publish(states.mark_failed(index));
-                    persister.persist();
-                } else {
-                    shared.duplicate_results.fetch_add(1);
-                }
-            } else {
-                persister.persist();
-            }
-
-            gate.release();
+            release_permit();
             report_worker_lost(
                 worker,
                 "lost while running job '" + job_id + "': " +
                     error.what(),
-                job_id,
-                !retry_scheduled,
-                retry_scheduled,
+                loss.job_id,
+                loss.job_failed,
+                loss.retry_scheduled,
                 shared,
                 disconnect_observer,
                 logger
             );
             return;
+        }
+
+        if (outstanding.empty()) {
+            release_permit();
         }
     }
 }
@@ -940,6 +1172,12 @@ ExperimentResult run_distributed_experiment(
     if (config.job_timeout.count() < 0) {
         throw std::invalid_argument(
             "Coordinator job timeout must not be negative"
+        );
+    }
+
+    if (config.dispatch_batch_size == 0) {
+        throw std::invalid_argument(
+            "Coordinator dispatch batch size must be at least 1"
         );
     }
 

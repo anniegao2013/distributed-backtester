@@ -30,7 +30,9 @@ experiment service ──────> local parallel runner
   result. `pending`, `running`, `completed`, and `failed` never leave the
   coordinator's state table.
 - **Dispatch is FIFO and worker-driven.** A worker takes the oldest queued job
-  when it becomes free, so one slow job does not block idle workers.
+  when it becomes free, so one slow job does not block idle workers. The
+  coordinator can prefetch a small adaptive pipeline per worker to hide the
+  dispatch round trip.
 - **A job is terminal only when completed or failed.** Retries are bounded
   reassignments with fresh correlation keys.
 - **Reliability is coordinator-local.** Transport loss, timeouts, duplicate

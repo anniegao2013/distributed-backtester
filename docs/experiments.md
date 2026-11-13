@@ -325,6 +325,8 @@ by [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json) and
 [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json).
 [`backtester_coordinator`](coordinator.md) accepts workers over TCP, dispatches
 jobs to idle workers, and reports every completed or failed result into the same
-terminal-state collector used by local execution. The run completes only when
-every job is terminal, then aggregates into the same response shape described
-above.
+terminal-state collector used by local execution. With `--dispatch-batch N` the
+coordinator can keep several jobs assigned to a busy worker and grow the
+pipeline when the queue is deep, shrinking it again near the tail. The run
+completes only when every job is terminal, then aggregates into the same
+response shape described above.

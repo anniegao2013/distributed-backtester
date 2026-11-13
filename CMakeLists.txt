@@ -292,6 +292,15 @@ add_backtester_test(
 # Real sockets with intentional sleeps; bound the runtime under load.
 set_tests_properties(coordinator_uneven_workload_test PROPERTIES TIMEOUT 60)
 
+add_backtester_test(
+    coordinator_batch_test
+    integration/coordinator_batch_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets with prefetched work and a deliberate disconnect; a regression
+# in batch requeueing must not hang the suite.
+set_tests_properties(coordinator_batch_test PROPERTIES TIMEOUT 30)
+
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(
     backtester_end_to_end_test

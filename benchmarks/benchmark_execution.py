@@ -91,6 +91,15 @@ def parse_args() -> argparse.Namespace:
         help="Per-run timeout in seconds (default: 600).",
     )
     parser.add_argument(
+        "--dispatch-batch",
+        type=int,
+        default=1,
+        help=(
+            "Coordinator prefetch target per worker for process runs "
+            "(default: 1, no prefetching)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default=str(REPO_ROOT / "benchmarks" / "results.md"),
         help="Markdown report path (default: benchmarks/results.md).",
@@ -109,6 +118,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--reps must be at least 1")
     if args.warmup < 0:
         parser.error("--warmup cannot be negative")
+    if args.dispatch_batch < 1:
+        parser.error("--dispatch-batch must be at least 1")
 
     return args
 
@@ -507,6 +518,7 @@ def run_processes(
     experiment: Path,
     workers: int,
     timeout: float,
+    dispatch_batch: int = 1,
 ) -> dict[str, Any]:
     port = free_port()
 
@@ -526,6 +538,8 @@ def run_processes(
             f"127.0.0.1:{port}",
             "--max-attempts",
             "1",
+            "--dispatch-batch",
+            str(dispatch_batch),
             "--json",
         ]
 
@@ -619,10 +633,15 @@ def run_mode(
     experiments: dict[str, Path],
     workers: int,
     timeout: float,
+    dispatch_batch: int = 1,
 ) -> dict[str, Any]:
     if mode == "processes":
         record = run_processes(
-            binaries, experiments[mode], workers, timeout
+            binaries,
+            experiments[mode],
+            workers,
+            timeout,
+            dispatch_batch,
         )
     else:
         record = run_local(binaries["backtester"], experiments[mode], timeout)
@@ -713,7 +732,7 @@ def build_markdown(
     lines.append(
         f"| Processes | {args.workers} | Coordinator plus {args.workers} "
         "`backtester_worker` processes over loopback TCP "
-        "(`--max-attempts 1`). |"
+        f"(`--max-attempts 1`, `--dispatch-batch {args.dispatch_batch}`). |"
     )
     lines.append("")
 
@@ -928,6 +947,7 @@ def main() -> int:
                     experiments,
                     args.workers,
                     args.timeout,
+                    args.dispatch_batch,
                 )
                 warmup_digests.append(warmup_record["digest"])
 
@@ -943,6 +963,7 @@ def main() -> int:
                     experiments,
                     args.workers,
                     args.timeout,
+                    args.dispatch_batch,
                 )
                 record["rep"] = rep
                 runs.append(record)

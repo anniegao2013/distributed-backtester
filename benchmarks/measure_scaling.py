@@ -136,6 +136,15 @@ def parse_args() -> argparse.Namespace:
         help="Per-run timeout in seconds (default: 600).",
     )
     parser.add_argument(
+        "--dispatch-batch",
+        type=int,
+        default=1,
+        help=(
+            "Coordinator prefetch target per worker for process runs "
+            "(default: 1, no prefetching)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default=str(REPO_ROOT / "benchmarks" / "scaling.md"),
         help="Markdown report path (default: benchmarks/scaling.md).",
@@ -152,6 +161,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--reps must be at least 1")
     if args.warmup < 0:
         parser.error("--warmup cannot be negative")
+    if args.dispatch_batch < 1:
+        parser.error("--dispatch-batch must be at least 1")
 
     return args
 
@@ -167,7 +178,10 @@ def write_variant(
     return path
 
 
-def build_configs(levels: list[int]) -> list[dict[str, Any]]:
+def build_configs(
+    levels: list[int],
+    dispatch_batch: int = 1,
+) -> list[dict[str, Any]]:
     configs: list[dict[str, Any]] = [
         {
             "key": "sequential",
@@ -199,6 +213,7 @@ def build_configs(levels: list[int]) -> list[dict[str, Any]]:
                 "kind": "processes",
                 "workers": level,
                 "concurrency": level,
+                "dispatch_batch": dispatch_batch,
             }
         )
 
@@ -213,7 +228,11 @@ def run_config(
 ) -> dict[str, Any]:
     if config["kind"] == "processes":
         record = run_processes(
-            binaries, experiment, config["workers"], timeout
+            binaries,
+            experiment,
+            config["workers"],
+            timeout,
+            config.get("dispatch_batch", 1),
         )
     else:
         record = run_local(binaries["backtester"], experiment, timeout)
@@ -236,6 +255,7 @@ def summarize(
         "kind": config["kind"],
         "workers": config["workers"],
         "concurrency": config["concurrency"],
+        "dispatch_batch": config.get("dispatch_batch", 1),
         "wall_seconds": wall_seconds,
         "wall_min_seconds": min(walls),
         "wall_max_seconds": max(walls),
@@ -312,7 +332,8 @@ def build_markdown(
         "Each concurrency level `N` runs the same experiment with "
         f"`execution.max_concurrent_jobs = N`. Threads use the local runner "
         "with a fixed pool of `N` worker threads; processes use a coordinator "
-        "and `N` worker processes over loopback TCP (`--max-attempts 1`)."
+        "and `N` worker processes over loopback TCP (`--max-attempts 1`) with "
+        f"`--dispatch-batch {args.dispatch_batch}`."
     )
     lines.append("")
 
@@ -490,7 +511,7 @@ def main() -> int:
     base_request = read_json(experiment_path, "benchmark experiment")
     env = environment(build_dir)
     jobs = job_count(base_request)
-    configs = build_configs(args.levels)
+    configs = build_configs(args.levels, args.dispatch_batch)
 
     print(
         f"Workload: {jobs} jobs; levels "

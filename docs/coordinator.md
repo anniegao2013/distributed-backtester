@@ -40,19 +40,27 @@ aggregate and return
    waits for the configured number of `worker_ready` announcements.
 3. Every pending job enters a thread-safe FIFO queue in request order. The queue
    is closed for new work, but retries may still be requeued at the back.
-4. Each worker thread takes one concurrency permit, then blocks in `pop_for()`.
-   A job always wins over the liveness interval, so the oldest queued job is
-   claimed first.
-5. The coordinator sends a job, records the attempt, waits for exactly one reply,
-   records the terminal outcome, and gives the worker its next job.
-6. When every job is terminal, workers receive `shutdown` and the results are
+4. Each worker thread takes one concurrency permit, then claims the oldest
+   queued job. A job always wins over the liveness interval, so the queue stays
+   FIFO.
+5. With dispatch prefetching enabled, the coordinator keeps more than one job
+   assigned to a busy worker. It sends the next job before the current reply
+   arrives, records each attempt when the message is sent, and consumes replies
+   in dispatch order. The worker still executes one job at a time.
+6. The prefetch target adapts to the queue depth: a full `dispatch_batch_size`
+   while work is plentiful, an even per-worker share near the tail, and one job
+   for each of the last few so no worker hoards them.
+7. When every job is terminal, workers receive `shutdown` and the results are
    aggregated in request order.
 
-The number of in-flight jobs is:
+The number of worker pipelines executing at once is:
 
 ```text
 min(execution.max_concurrent_jobs or hardware_concurrency, connected workers)
 ```
+
+Each active pipeline may hold up to `dispatch_batch_size` assigned jobs, but a
+worker only runs one of them at a time.
 
 Idle workers stay available until every job is terminal, because another worker
 may still requeue a retry.
@@ -89,7 +97,7 @@ result is retryable.
 | `failed` result, retry disabled | yes | Terminal `failed` with the runtime message. |
 | `worker_error` | yes | Requeued while attempts remain; otherwise terminal with the worker error. |
 | Send fails before delivery | no | Job returns to the front of the queue; worker is removed. |
-| Reply missing, malformed, timed out, or connection lost | yes | Requeued while attempts remain; otherwise terminal `failed`. |
+| Reply missing, malformed, timed out, or connection lost | yes | The current job and every prefetched job in that worker's pipeline are requeued while attempts remain; otherwise terminal `failed`. |
 | Attempt limit reached | yes | Terminal `failed` with the last error. |
 | Repeated handled `message_id` | no | Ignored; the first outcome wins. |
 | Every worker stops with jobs queued | n/a | Pending jobs fail with an undispatched or no-worker-remaining message. |
@@ -106,6 +114,10 @@ The coordinator removes a worker when:
   skipped duplicate replies; this uses the same retry/failure path as a lost
   worker.
 
+When a worker is lost, the job it was running and every job already prefetched
+into its pipeline have consumed an attempt. Each is requeued while attempts
+remain, and the remainder of the queue is offered to the healthy workers.
+
 Every loss increments `workers_disconnected` and `transport_failures`; timeouts
 also increment `job_timeouts`. Each loss is logged and emitted through
 `CoordinatorConfig::on_worker_disconnected` with the worker ID, reason,
@@ -120,7 +132,8 @@ The coordinator records the `message_id` of every handled attempt. A later
 `backtest_result` or `worker_error` that reuses one of those IDs is ignored: it
 cannot overwrite an outcome, advance a state, consume an attempt, or be mistaken
 for the next job's reply. `duplicate_results` counts ignored submissions. A
-reply with an unknown `message_id` remains a correlation error.
+reply with an unknown `message_id` remains a correlation error. Prefetched jobs
+still reply in dispatch order, so only the pipeline front is compared at a time.
 
 ## Persistence and recovery
 
@@ -179,6 +192,7 @@ when they apply.
 | `--max-attempts N` | `3` | Maximum deliveries per job; `1` disables retries. |
 | `--no-retry-failed-results` | off | Retry only `worker_error` and transport/timeout failures, not `failed` results. |
 | `--job-timeout SECONDS` | `0` | Reply deadline per attempt; `0` disables it. |
+| `--dispatch-batch N` | `1` | Maximum jobs kept assigned to one worker before waiting for a reply; the target shrinks near the queue tail. |
 | `--state PATH` | off | Durable coordinator state and restart recovery. |
 | `--json` | off | Emit the aggregated result JSON. |
 
@@ -195,6 +209,7 @@ config.expected_workers = 4;
 config.max_job_attempts = 3;
 config.retry_failed_results = true;
 config.job_timeout = std::chrono::seconds(30); // 0 disables
+config.dispatch_batch_size = 4;                // 1 disables prefetching
 config.state_path = "run-state.json";          // empty disables
 config.log = [](const std::string& line) { /* stderr */ };
 config.on_job_state_changed = [](const JobStateTransition& change) {
@@ -223,8 +238,9 @@ after bind and before the first accept, which is useful with port `0`.
   `jobs_requeued_after_restart`, `jobs_exhausted_after_restart`,
   `persistence_errors`.
 
-`max_job_attempts` must be at least 1 and `job_timeout` must not be negative.
-Invalid policy values throw `std::invalid_argument` before the socket is bound.
+`max_job_attempts` must be at least 1, `dispatch_batch_size` must be at least
+1, and `job_timeout` must not be negative. Invalid policy values throw
+`std::invalid_argument` before the socket is bound.
 
 ## Limitations
 
@@ -235,4 +251,5 @@ Invalid policy values throw `std::invalid_argument` before the socket is bound.
 - A retry after a lost reply may run the same backtest twice. Backtests are
   read-only, so this only wastes work.
 - Every worker must see the dataset at the same path as the coordinator.
-- One job in flight per worker; workers do not advertise capacity.
+- Workers still execute one job at a time and do not advertise capacity.
+  Prefetching only hides the coordinator-to-worker dispatch round trip.

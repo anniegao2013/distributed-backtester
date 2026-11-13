@@ -75,6 +75,14 @@ struct CoordinatorConfig {
     // (default) waits indefinitely.
     std::chrono::milliseconds job_timeout{0};
 
+    // Maximum number of jobs the coordinator may keep assigned to one worker
+    // before waiting for a result. 1 (the default) is the original
+    // one-job-at-a-time pipeline. Larger values let the coordinator send the
+    // next job while the worker is still busy, removing the dispatch round trip
+    // from the critical path. The effective target shrinks toward 1 as the
+    // queue drains so the last few jobs stay evenly distributed.
+    std::size_t dispatch_batch_size = 1;
+
     // Optional path to a durable coordinator state file. When empty (the
     // default) the run is entirely in memory. When set, the coordinator loads
     // a previous checkpoint for this experiment, resumes only the jobs that
