@@ -201,6 +201,12 @@ Results are returned in execution-plan order (the interleaved job order), not
 ranked. `summary.best_*` identifies the highest Sharpe ratio, with total return
 as the tie-breaker.
 
+Local execution uses a fixed pool of worker threads sized to
+`min(max_concurrent_jobs, jobs)` (with `0` resolved to hardware concurrency).
+Each thread pulls the next job from the execution plan, records its outcome
+through the result collector, and immediately takes another, so a slow job does
+not hold up later work.
+
 `status` values:
 
 | Status | Meaning |

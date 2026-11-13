@@ -707,8 +707,8 @@ def build_markdown(
     )
     lines.append(
         f"| Threads | {args.workers} | Local runner with "
-        f"`max_concurrent_jobs = {args.workers}`; one `std::async` worker "
-        "thread per in-flight job. |"
+        f"`max_concurrent_jobs = {args.workers}`; a fixed pool of "
+        f"{args.workers} worker threads. |"
     )
     lines.append(
         f"| Processes | {args.workers} | Coordinator plus {args.workers} "

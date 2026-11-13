@@ -311,8 +311,8 @@ def build_markdown(
     lines.append(
         "Each concurrency level `N` runs the same experiment with "
         f"`execution.max_concurrent_jobs = N`. Threads use the local runner "
-        "(`std::async`); processes use a coordinator and `N` worker "
-        "processes over loopback TCP (`--max-attempts 1`)."
+        "with a fixed pool of `N` worker threads; processes use a coordinator "
+        "and `N` worker processes over loopback TCP (`--max-attempts 1`)."
     )
     lines.append("")
 
