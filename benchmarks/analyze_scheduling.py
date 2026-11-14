@@ -229,9 +229,10 @@ def build_markdown(
     )
     lines.append("")
     lines.append(
-        "Process-mode job durations include each worker's per-job CSV load; "
-        "local job durations reuse a preloaded dataset. Utilization therefore "
-        "measures busy-ness, not useful work."
+        "Both local and process modes reuse parsed datasets across jobs. "
+        "Process-mode durations still include each worker's first dataset "
+        "load and TCP scheduling effects, but not a CSV parse per job. "
+        "Utilization therefore measures busy-ness, not useful work."
     )
     lines.append("")
 
@@ -414,8 +415,9 @@ def build_markdown(
     if max_process and processes:
         inflation_text += (
             f" For processes, {processes[0]['work_inflation']:.2f}x is "
-            "already present with one worker (per-job CSV loading), and "
-            "concurrency adds "
+            "already present with one worker, which is close to noise after "
+            "the worker dataset cache removes per-job CSV parsing. "
+            "Concurrency adds "
             f"{max_process['work_seconds'] / processes[0]['work_seconds']:.2f}x "
             "more through contention and CPU oversubscription."
         )
@@ -437,8 +439,8 @@ def build_markdown(
         f"utilization falls from {sequential['baseline_work_utilization'] * 100:.1f}% "
         "sequentially to "
         + " and ".join(useful)
-        + ". High process occupancy mostly reflects redundant data loading "
-        "and contention, not more backtest throughput."
+        + ". High process occupancy mostly reflects work inflation under "
+        "contention, not additional useful backtest throughput."
     )
 
     if busiest and busiest["worker_stats"]:
@@ -463,7 +465,7 @@ def build_markdown(
             f"{max_process['coordinator_cpu_seconds']:.3f} s versus "
             f"{max_process['work_seconds']:.2f} s of worker busy time "
             f"({max_process['coordinator_cpu_seconds'] / max_process['work_seconds'] * 100:.1f}%). "
-            "The cost of distribution is paid in per-job data loading and "
+            "The cost of distribution is paid in first-load overhead and "
             "contention inside the workers."
         )
     lines.append("")
@@ -472,7 +474,8 @@ def build_markdown(
     lines.append("")
     lines.append(
         "- Job durations are per-job wall-clock measurements, not CPU time. "
-        "Process-mode durations include parsing the CSV for every job."
+        "Process-mode durations include each worker's first dataset load and "
+        "then reuse the parsed dataset from the worker cache."
     )
     lines.append(
         "- Idle time includes dispatch gaps, queueing, and the end-of-run "
