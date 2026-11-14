@@ -1,5 +1,6 @@
 #pragma once
 
+#include "coordinator/scheduling.h"
 #include "protocol/protocol.h"
 
 #include <chrono>
@@ -21,26 +22,30 @@ struct QueuedJob {
     std::size_t attempts = 0;
 };
 
-// Thread-safe FIFO queue used to distribute jobs across workers.
+// Thread-safe pending-job queue used to distribute jobs across workers.
 //
 // The coordinator pushes every expanded job once, then closes the queue.
-// Workers call pop() to take the next job in insertion order. push() appends to
-// the back and pop() removes from the front, so distribution is FIFO even when
-// several workers pop concurrently. A blocked pop() wakes when a job arrives or
-// when close() is called.
+// Workers call pop() to take the next job according to the configured
+// SchedulingPolicy. FIFO is the default and preserves request order; LIFO and
+// the two estimated-duration policies reorder pending work. A blocked pop()
+// wakes when a job arrives or when close() is called.
 class JobQueue {
 public:
-    JobQueue() = default;
+    explicit JobQueue(
+        SchedulingPolicy policy = SchedulingPolicy::Fifo
+    ) : policy_(policy) {}
 
     JobQueue(const JobQueue&) = delete;
     JobQueue& operator=(const JobQueue&) = delete;
 
-    // Appends one job to the back. Throws std::logic_error if the queue has
-    // already been closed.
+    // Appends one job. Throws std::logic_error if the queue has already been
+    // closed. This is the initial insertion path; initial work is appended in
+    // request order and policy chooses which end or estimate to pop next.
     void push(QueuedJob job);
 
-    // Blocks until a job is available or the queue is closed. Returns the
-    // oldest job, or std::nullopt once the queue is closed and empty.
+    // Blocks until a job is available or the queue is closed. Returns the next
+    // job under the configured policy, or std::nullopt once the queue is
+    // closed and empty.
     std::optional<QueuedJob> pop();
 
     // Like pop(), but returns std::nullopt after `timeout` when no job has
@@ -49,16 +54,21 @@ public:
     // empty closed queue from an ordinary timeout.
     std::optional<QueuedJob> pop_for(std::chrono::milliseconds timeout);
 
-    // Puts a job back at the front of the queue. This is used when a job was
-    // claimed but could not be delivered, so it has not started running and
-    // must be offered to another worker. Unlike push(), this is allowed after
-    // close() because it returns existing work rather than adding new work.
+    // Puts a job back at the logical front of the queue. This is used when a
+    // job was claimed but could not be delivered, so it has not started
+    // running and must be offered to another worker again. Under FIFO and LIFO
+    // it becomes the next job; under the priority policies the estimate still
+    // decides, with insertion position breaking ties. Unlike push(), this is
+    // allowed after close() because it returns existing work rather than
+    // adding new work.
     void requeue_front(QueuedJob job);
 
-    // Appends a failed attempt to the back of the queue. Retries go to the back
-    // so other queued work keeps making progress and, when several workers are
-    // available, the retry can land on a different worker. Like
-    // requeue_front(), this is allowed after close().
+    // Appends a failed attempt to the logical back of the queue. Retries go to
+    // the back so other queued work keeps making progress and, when several
+    // workers are available, the retry can land on a different worker. Under
+    // FIFO and the priority policies that means the deque back; under LIFO it
+    // means the deque front, which is popped last. Like requeue_front(), this
+    // is allowed after close().
     void requeue_back(QueuedJob job);
 
     // Stops accepting new jobs and wakes every blocked pop(). Jobs already
@@ -69,9 +79,18 @@ public:
     std::size_t size() const;
     bool closed() const;
 
+    SchedulingPolicy policy() const noexcept { return policy_; }
+
 private:
+    // Returns the index of the next job to pop. The caller must hold mutex_.
+    std::size_t next_index() const;
+
+    // Removes and returns the next job. The caller must hold mutex_.
+    std::optional<QueuedJob> take_next();
+
     mutable std::mutex mutex_;
     std::condition_variable condition_;
     std::deque<QueuedJob> jobs_;
+    SchedulingPolicy policy_ = SchedulingPolicy::Fifo;
     bool closed_ = false;
 };

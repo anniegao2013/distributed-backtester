@@ -1,0 +1,2086 @@
+{
+  "captured_at": "2026-11-13 23:29:38 PST",
+  "environment": {
+    "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+    "machine": "arm64",
+    "processor": "Apple M1",
+    "logical_cpus": 8,
+    "physical_cpus": 8,
+    "performance_cores": 4,
+    "efficiency_cores": 4,
+    "python": "3.13.1",
+    "build_dir": "build/release",
+    "build_type": "Release"
+  },
+  "workload": {
+    "jobs": 225,
+    "trading_days": 17346,
+    "start_date": "1950-01-03",
+    "end_date": "2018-12-07",
+    "data_path": "`data/market/sp500_1950_2018.csv`",
+    "min_job_seconds": 0.000931334,
+    "max_job_seconds": 0.038192959,
+    "median_job_seconds": 0.004586,
+    "total_work_seconds": 1.833698496
+  },
+  "configuration": {
+    "workers": [
+      2,
+      4
+    ],
+    "policies": [
+      "fifo",
+      "longest-first",
+      "shortest-first",
+      "lifo"
+    ],
+    "reps": 5,
+    "warmup": 1,
+    "dispatch_batch": 1,
+    "build_dir": "build/release",
+    "experiment": "experiments/heterogeneous_scheduling.json"
+  },
+  "runs": [
+    {
+      "harness_seconds": 1.0766713749617338,
+      "execution_seconds": 1.01646575,
+      "overhead_seconds": 0.06020562496173376,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.355220281647,
+      "mean_latency_seconds": 0.00863630832,
+      "median_latency_seconds": 0.004954125,
+      "p95_latency_seconds": 0.027193166,
+      "total_work_seconds": 1.943169372,
+      "max_job_seconds": 0.039659416,
+      "min_job_seconds": 0.001055458,
+      "cpu_seconds": 0.018522,
+      "cpu_utilization": 1.82219617335852,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 102,
+          "busy_seconds": 0.9681222069999997,
+          "utilization": 0.9524395750668428
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 123,
+          "busy_seconds": 0.9750471650000005,
+          "utilization": 0.9592523555269821
+        }
+      ],
+      "workers": 2,
+      "policy": "fifo",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 1.086298500187695,
+      "execution_seconds": 1.011889125,
+      "overhead_seconds": 0.07440937518769508,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 222.356377236488,
+      "mean_latency_seconds": 0.00860608016444445,
+      "median_latency_seconds": 0.004948417,
+      "p95_latency_seconds": 0.027137417,
+      "total_work_seconds": 1.936368037,
+      "max_job_seconds": 0.039676125,
+      "min_job_seconds": 0.001006958,
+      "cpu_seconds": 0.017996,
+      "cpu_utilization": 1.77845571766571,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 111,
+          "busy_seconds": 0.9628592070000002,
+          "utilization": 0.9515461558103021
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 114,
+          "busy_seconds": 0.97350883,
+          "utilization": 0.9620706517623658
+        }
+      ],
+      "workers": 2,
+      "policy": "fifo",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 1.071312750224024,
+      "execution_seconds": 1.010761292,
+      "overhead_seconds": 0.06055145822402408,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 222.604488103013,
+      "mean_latency_seconds": 0.00858776220444444,
+      "median_latency_seconds": 0.005000209,
+      "p95_latency_seconds": 0.027131833,
+      "total_work_seconds": 1.932246496,
+      "max_job_seconds": 0.039666208,
+      "min_job_seconds": 0.000998583,
+      "cpu_seconds": 0.018164,
+      "cpu_utilization": 1.79706129862361,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 103,
+          "busy_seconds": 0.9628499980000002,
+          "utilization": 0.9525988041101203
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 122,
+          "busy_seconds": 0.9693964980000004,
+          "utilization": 0.9590756053606379
+        }
+      ],
+      "workers": 2,
+      "policy": "fifo",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 1.0785139161162078,
+      "execution_seconds": 1.015839125,
+      "overhead_seconds": 0.06267479111620777,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.491764259424,
+      "mean_latency_seconds": 0.00862793092,
+      "median_latency_seconds": 0.004971375,
+      "p95_latency_seconds": 0.0271405,
+      "total_work_seconds": 1.941284457,
+      "max_job_seconds": 0.03965125,
+      "min_job_seconds": 0.001052958,
+      "cpu_seconds": 0.018447,
+      "cpu_utilization": 1.81593714457493,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 119,
+          "busy_seconds": 0.975666792,
+          "utilization": 0.9604540403973906
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 106,
+          "busy_seconds": 0.9656176649999998,
+          "utilization": 0.9505616009818482
+        }
+      ],
+      "workers": 2,
+      "policy": "fifo",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 1.0861137923784554,
+      "execution_seconds": 1.012301166,
+      "overhead_seconds": 0.07381262637845531,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 222.265870629255,
+      "mean_latency_seconds": 0.00860361221333334,
+      "median_latency_seconds": 0.004928708,
+      "p95_latency_seconds": 0.027329791,
+      "total_work_seconds": 1.935812748,
+      "max_job_seconds": 0.039576958,
+      "min_job_seconds": 0.001011625,
+      "cpu_seconds": 0.018806,
+      "cpu_utilization": 1.85774753913501,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 100,
+          "busy_seconds": 0.9656088669999999,
+          "utilization": 0.953875091160371
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 125,
+          "busy_seconds": 0.9702038810000002,
+          "utilization": 0.9584142679926541
+        }
+      ],
+      "workers": 2,
+      "policy": "fifo",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 1.073218542151153,
+      "execution_seconds": 1.006697209,
+      "overhead_seconds": 0.06652133315115316,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 223.503152674381,
+      "mean_latency_seconds": 0.00859219131111111,
+      "median_latency_seconds": 0.004809125,
+      "p95_latency_seconds": 0.027160208,
+      "total_work_seconds": 1.933243045,
+      "max_job_seconds": 0.05462175,
+      "min_job_seconds": 0.000991084,
+      "cpu_seconds": 0.017941,
+      "cpu_utilization": 1.78216447205825,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.96644959,
+          "utilization": 0.9600201345149454
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.9667934549999999,
+          "utilization": 0.9603617118998091
+        }
+      ],
+      "workers": 2,
+      "policy": "longest-first",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 1.074105250183493,
+      "execution_seconds": 1.013826958,
+      "overhead_seconds": 0.06027829218349301,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.931364346301,
+      "mean_latency_seconds": 0.00862651575111111,
+      "median_latency_seconds": 0.004848125,
+      "p95_latency_seconds": 0.027181125,
+      "total_work_seconds": 1.940966044,
+      "max_job_seconds": 0.054931375,
+      "min_job_seconds": 0.00102125,
+      "cpu_seconds": 0.018446,
+      "cpu_utilization": 1.81944264299194,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.9710861689999993,
+          "utilization": 0.9578421261510778
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.9698798749999996,
+          "utilization": 0.9566522840478658
+        }
+      ],
+      "workers": 2,
+      "policy": "longest-first",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 1.0821779170073569,
+      "execution_seconds": 1.007739375,
+      "overhead_seconds": 0.07443854200735678,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 223.272014155446,
+      "mean_latency_seconds": 0.00859550332888889,
+      "median_latency_seconds": 0.00483525,
+      "p95_latency_seconds": 0.027258625,
+      "total_work_seconds": 1.933988249,
+      "max_job_seconds": 0.054932583,
+      "min_job_seconds": 0.000984875,
+      "cpu_seconds": 0.018006,
+      "cpu_utilization": 1.78677150528131,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.9672877909999997,
+          "utilization": 0.9598590816201854
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.9667004579999996,
+          "utilization": 0.9592762593006744
+        }
+      ],
+      "workers": 2,
+      "policy": "longest-first",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 1.0842484580352902,
+      "execution_seconds": 1.033274875,
+      "overhead_seconds": 0.050973583035290204,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 217.754254403989,
+      "mean_latency_seconds": 0.00876730349777778,
+      "median_latency_seconds": 0.004967166,
+      "p95_latency_seconds": 0.027214541,
+      "total_work_seconds": 1.972643287,
+      "max_job_seconds": 0.055972209,
+      "min_job_seconds": 0.000988042,
+      "cpu_seconds": 0.020091,
+      "cpu_utilization": 1.94440032232469,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 114,
+          "busy_seconds": 0.9853930000000003,
+          "utilization": 0.9536600800440447
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 111,
+          "busy_seconds": 0.9872502870000001,
+          "utilization": 0.955457556248041
+        }
+      ],
+      "workers": 2,
+      "policy": "longest-first",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 1.078957459423691,
+      "execution_seconds": 1.007266625,
+      "overhead_seconds": 0.07169083442369106,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 223.376804527798,
+      "mean_latency_seconds": 0.00859744494666667,
+      "median_latency_seconds": 0.004795042,
+      "p95_latency_seconds": 0.027246791,
+      "total_work_seconds": 1.934425113,
+      "max_job_seconds": 0.054401875,
+      "min_job_seconds": 0.000989042,
+      "cpu_seconds": 0.018185,
+      "cpu_utilization": 1.80538097348356,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.9676785810000003,
+          "utilization": 0.9606975521501075
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.9667465319999994,
+          "utilization": 0.9597722271399585
+        }
+      ],
+      "workers": 2,
+      "policy": "longest-first",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 1.0807830421254039,
+      "execution_seconds": 1.014887,
+      "overhead_seconds": 0.06589604212540379,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.699558670079,
+      "mean_latency_seconds": 0.00859494795111111,
+      "median_latency_seconds": 0.004924333,
+      "p95_latency_seconds": 0.027165083,
+      "total_work_seconds": 1.933863289,
+      "max_job_seconds": 0.039657041,
+      "min_job_seconds": 0.001049708,
+      "cpu_seconds": 0.020669,
+      "cpu_utilization": 2.03658141251193,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 111,
+          "busy_seconds": 0.9756967089999997,
+          "utilization": 0.961384576805102
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 114,
+          "busy_seconds": 0.95816658,
+          "utilization": 0.9441115907485266
+        }
+      ],
+      "workers": 2,
+      "policy": "shortest-first",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 1.06697495887056,
+      "execution_seconds": 1.014935583,
+      "overhead_seconds": 0.052039375870559956,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.688946341731,
+      "mean_latency_seconds": 0.00860180012888889,
+      "median_latency_seconds": 0.00493525,
+      "p95_latency_seconds": 0.027194084,
+      "total_work_seconds": 1.935405029,
+      "max_job_seconds": 0.039632917,
+      "min_job_seconds": 0.001043,
+      "cpu_seconds": 0.021048,
+      "cpu_utilization": 2.07382619671144,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 113,
+          "busy_seconds": 0.9589420820000001,
+          "utilization": 0.9448304878281129
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 112,
+          "busy_seconds": 0.9764629469999999,
+          "utilization": 0.9620935193874269
+        }
+      ],
+      "workers": 2,
+      "policy": "shortest-first",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 1.0845966250635684,
+      "execution_seconds": 1.028483208,
+      "overhead_seconds": 0.05611341706356843,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 218.768763796871,
+      "mean_latency_seconds": 0.00871030128888889,
+      "median_latency_seconds": 0.005070875,
+      "p95_latency_seconds": 0.027154542,
+      "total_work_seconds": 1.95981779,
+      "max_job_seconds": 0.039596041,
+      "min_job_seconds": 0.001034125,
+      "cpu_seconds": 0.021444,
+      "cpu_utilization": 2.08501216482671,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.9713717529999999,
+          "utilization": 0.9444702115155972
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.988446037,
+          "utilization": 0.9610716337529159
+        }
+      ],
+      "workers": 2,
+      "policy": "shortest-first",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 1.0721524581313133,
+      "execution_seconds": 1.014346667,
+      "overhead_seconds": 0.05780579113131323,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.817655955289,
+      "mean_latency_seconds": 0.00858892389333334,
+      "median_latency_seconds": 0.004919542,
+      "p95_latency_seconds": 0.027114333,
+      "total_work_seconds": 1.932507876,
+      "max_job_seconds": 0.039671125,
+      "min_job_seconds": 0.0010495,
+      "cpu_seconds": 0.021005,
+      "cpu_utilization": 2.07079105037371,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.9751954629999998,
+          "utilization": 0.961402540892856
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.9573124129999999,
+          "utilization": 0.9437724243047173
+        }
+      ],
+      "workers": 2,
+      "policy": "shortest-first",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 1.069634540937841,
+      "execution_seconds": 1.01485125,
+      "overhead_seconds": 0.054783290937840956,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.70736844439,
+      "mean_latency_seconds": 0.00859243847555556,
+      "median_latency_seconds": 0.004987125,
+      "p95_latency_seconds": 0.027174416,
+      "total_work_seconds": 1.933298657,
+      "max_job_seconds": 0.039567917,
+      "min_job_seconds": 0.0010395,
+      "cpu_seconds": 0.021207,
+      "cpu_utilization": 2.08966585004453,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 112,
+          "busy_seconds": 0.9755403739999998,
+          "utilization": 0.9612643961368721
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 113,
+          "busy_seconds": 0.957758283,
+          "utilization": 0.9437425267988782
+        }
+      ],
+      "workers": 2,
+      "policy": "shortest-first",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 1.074728291016072,
+      "execution_seconds": 1.015814917,
+      "overhead_seconds": 0.058913374016072106,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 221.497042654671,
+      "mean_latency_seconds": 0.00866518018666667,
+      "median_latency_seconds": 0.004799667,
+      "p95_latency_seconds": 0.027787,
+      "total_work_seconds": 1.949665542,
+      "max_job_seconds": 0.044002291,
+      "min_job_seconds": 0.00102825,
+      "cpu_seconds": 0.01731,
+      "cpu_utilization": 1.70405058148993,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 116,
+          "busy_seconds": 0.9720381280000001,
+          "utilization": 0.9569047586648112
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 109,
+          "busy_seconds": 0.9776274140000004,
+          "utilization": 0.9624070267517055
+        }
+      ],
+      "workers": 2,
+      "policy": "lifo",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 1.0791540420614183,
+      "execution_seconds": 1.028862583,
+      "overhead_seconds": 0.0502914590614183,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 218.688096659066,
+      "mean_latency_seconds": 0.00876916313777778,
+      "median_latency_seconds": 0.004934084,
+      "p95_latency_seconds": 0.031884209,
+      "total_work_seconds": 1.973061706,
+      "max_job_seconds": 0.040925416,
+      "min_job_seconds": 0.00098525,
+      "cpu_seconds": 0.019348,
+      "cpu_utilization": 1.88052324184871,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 115,
+          "busy_seconds": 0.9867461219999997,
+          "utilization": 0.9590650280261963
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 110,
+          "busy_seconds": 0.9863155840000002,
+          "utilization": 0.9586465678672661
+        }
+      ],
+      "workers": 2,
+      "policy": "lifo",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 1.077988666947931,
+      "execution_seconds": 1.01155875,
+      "overhead_seconds": 0.06642991694793099,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 222.428998810005,
+      "mean_latency_seconds": 0.00864201726666666,
+      "median_latency_seconds": 0.004797916,
+      "p95_latency_seconds": 0.027926625,
+      "total_work_seconds": 1.944453885,
+      "max_job_seconds": 0.042490167,
+      "min_job_seconds": 0.001011875,
+      "cpu_seconds": 0.016961,
+      "cpu_utilization": 1.67671922169622,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 105,
+          "busy_seconds": 0.975951501,
+          "utilization": 0.9647996233535621
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 120,
+          "busy_seconds": 0.9685023839999995,
+          "utilization": 0.9574356249698789
+        }
+      ],
+      "workers": 2,
+      "policy": "lifo",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 1.073995416983962,
+      "execution_seconds": 1.0349955,
+      "overhead_seconds": 0.0389999169839621,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 217.39224953152,
+      "mean_latency_seconds": 0.00884335352888889,
+      "median_latency_seconds": 0.0050925,
+      "p95_latency_seconds": 0.031875333,
+      "total_work_seconds": 1.989754544,
+      "max_job_seconds": 0.040904333,
+      "min_job_seconds": 0.001031042,
+      "cpu_seconds": 0.019473,
+      "cpu_utilization": 1.88145745561213,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 109,
+          "busy_seconds": 0.9970762089999997,
+          "utilization": 0.9633628445727539
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 116,
+          "busy_seconds": 0.9926783350000002,
+          "utilization": 0.9591136724749048
+        }
+      ],
+      "workers": 2,
+      "policy": "lifo",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 1.0805549160577357,
+      "execution_seconds": 1.005913042,
+      "overhead_seconds": 0.0746418740577357,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 223.677386220826,
+      "mean_latency_seconds": 0.00858832240888889,
+      "median_latency_seconds": 0.004841333,
+      "p95_latency_seconds": 0.027798791,
+      "total_work_seconds": 1.932372542,
+      "max_job_seconds": 0.040487292,
+      "min_job_seconds": 0.000980458,
+      "cpu_seconds": 0.017255,
+      "cpu_utilization": 1.7153570218846,
+      "max_concurrent": 2,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 115,
+          "busy_seconds": 0.9637733759999999,
+          "utilization": 0.9581080429017839
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 110,
+          "busy_seconds": 0.9685991659999997,
+          "utilization": 0.9629054655402308
+        }
+      ],
+      "workers": 2,
+      "policy": "lifo",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 0.5824045413173735,
+      "execution_seconds": 0.541740084,
+      "overhead_seconds": 0.04066445731737356,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 415.328321911657,
+      "mean_latency_seconds": 0.00910076979111111,
+      "median_latency_seconds": 0.005146458,
+      "p95_latency_seconds": 0.028928833,
+      "total_work_seconds": 2.047673203,
+      "max_job_seconds": 0.0414115,
+      "min_job_seconds": 0.001063542,
+      "cpu_seconds": 0.029851,
+      "cpu_utilization": 5.51020699439327,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 57,
+          "busy_seconds": 0.49641054199999995,
+          "utilization": 0.9163260328360713
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 56,
+          "busy_seconds": 0.524372329,
+          "utilization": 0.9679407976021209
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 51,
+          "busy_seconds": 0.505490709,
+          "utilization": 0.933087146270683
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 61,
+          "busy_seconds": 0.521399623,
+          "utilization": 0.9624534687376023
+        }
+      ],
+      "workers": 4,
+      "policy": "fifo",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 0.5864560003392398,
+      "execution_seconds": 0.544042708,
+      "overhead_seconds": 0.04241329233923985,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 413.570472853392,
+      "mean_latency_seconds": 0.00911115186666667,
+      "median_latency_seconds": 0.005093416,
+      "p95_latency_seconds": 0.028653083,
+      "total_work_seconds": 2.05000917,
+      "max_job_seconds": 0.041124542,
+      "min_job_seconds": 0.001049542,
+      "cpu_seconds": 0.030405,
+      "cpu_utilization": 5.58871565649217,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 58,
+          "busy_seconds": 0.524541379,
+          "utilization": 0.964154782863113
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 59,
+          "busy_seconds": 0.5226827480000001,
+          "utilization": 0.9607384499674245
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 53,
+          "busy_seconds": 0.49911971,
+          "utilization": 0.917427442111769
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 55,
+          "busy_seconds": 0.5036653330000002,
+          "utilization": 0.9257827107940948
+        }
+      ],
+      "workers": 4,
+      "policy": "fifo",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 0.5769218341447413,
+      "execution_seconds": 0.538768584,
+      "overhead_seconds": 0.038153250144741246,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 417.619005045773,
+      "mean_latency_seconds": 0.00905300498666667,
+      "median_latency_seconds": 0.00509375,
+      "p95_latency_seconds": 0.028738542,
+      "total_work_seconds": 2.036926122,
+      "max_job_seconds": 0.041129542,
+      "min_job_seconds": 0.001054083,
+      "cpu_seconds": 0.027014,
+      "cpu_utilization": 5.01402657880289,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 47,
+          "busy_seconds": 0.49729958799999996,
+          "utilization": 0.9230300406677014
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 65,
+          "busy_seconds": 0.49814866099999994,
+          "utilization": 0.9246059918742402
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 59,
+          "busy_seconds": 0.5204424990000001,
+          "utilization": 0.9659852382929588
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 54,
+          "busy_seconds": 0.521035374,
+          "utilization": 0.9670856643712543
+        }
+      ],
+      "workers": 4,
+      "policy": "fifo",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 0.6276064165867865,
+      "execution_seconds": 0.56073675,
+      "overhead_seconds": 0.0668696665867865,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 401.257809480117,
+      "mean_latency_seconds": 0.00942006408444445,
+      "median_latency_seconds": 0.005160167,
+      "p95_latency_seconds": 0.028887958,
+      "total_work_seconds": 2.119514419,
+      "max_job_seconds": 0.0500185,
+      "min_job_seconds": 0.001058875,
+      "cpu_seconds": 0.031815,
+      "cpu_utilization": 5.67378542604886,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 53,
+          "busy_seconds": 0.5216857940000001,
+          "utilization": 0.930357773054825
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 58,
+          "busy_seconds": 0.5390976239999999,
+          "utilization": 0.9614094742318922
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 66,
+          "busy_seconds": 0.5136231230000001,
+          "utilization": 0.9159790632591855
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 48,
+          "busy_seconds": 0.5451078779999998,
+          "utilization": 0.9721279691405991
+        }
+      ],
+      "workers": 4,
+      "policy": "fifo",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 0.5920444582588971,
+      "execution_seconds": 0.540886459,
+      "overhead_seconds": 0.05115799925889708,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 415.983791526199,
+      "mean_latency_seconds": 0.00908950441777778,
+      "median_latency_seconds": 0.00507725,
+      "p95_latency_seconds": 0.028651208,
+      "total_work_seconds": 2.045138494,
+      "max_job_seconds": 0.041152959,
+      "min_job_seconds": 0.001056958,
+      "cpu_seconds": 0.026746,
+      "cpu_utilization": 4.94484555029321,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 60,
+          "busy_seconds": 0.5220540830000001,
+          "utilization": 0.9651823859025469
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 53,
+          "busy_seconds": 0.49799083600000005,
+          "utilization": 0.920693849353696
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 57,
+          "busy_seconds": 0.502678663,
+          "utilization": 0.9293607829069354
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 55,
+          "busy_seconds": 0.522414912,
+          "utilization": 0.9658494926381583
+        }
+      ],
+      "workers": 4,
+      "policy": "fifo",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 0.5887978752143681,
+      "execution_seconds": 0.531536625,
+      "overhead_seconds": 0.05726125021436812,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 423.301028409849,
+      "mean_latency_seconds": 0.00908839535111111,
+      "median_latency_seconds": 0.005005833,
+      "p95_latency_seconds": 0.028139375,
+      "total_work_seconds": 2.044888954,
+      "max_job_seconds": 0.056044417,
+      "min_job_seconds": 0.001107792,
+      "cpu_seconds": 0.021316,
+      "cpu_utilization": 4.0102598762597,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.511141207,
+          "utilization": 0.9616293270477834
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 56,
+          "busy_seconds": 0.5107257860000001,
+          "utilization": 0.9608477797743478
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 58,
+          "busy_seconds": 0.5103093779999998,
+          "utilization": 0.9600643756204001
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 55,
+          "busy_seconds": 0.5127125829999996,
+          "utilization": 0.9645856162780873
+        }
+      ],
+      "workers": 4,
+      "policy": "longest-first",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 0.5858901659958065,
+      "execution_seconds": 0.534866583,
+      "overhead_seconds": 0.05102358299580645,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 420.665652241729,
+      "mean_latency_seconds": 0.00914783056888889,
+      "median_latency_seconds": 0.005051791,
+      "p95_latency_seconds": 0.029659834,
+      "total_work_seconds": 2.058261878,
+      "max_job_seconds": 0.055710791,
+      "min_job_seconds": 0.001111583,
+      "cpu_seconds": 0.022349,
+      "cpu_utilization": 4.17842518308907,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.5140509569999998,
+          "utilization": 0.9610825827195112
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 56,
+          "busy_seconds": 0.5144912980000002,
+          "utilization": 0.9619058553149509
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 56,
+          "busy_seconds": 0.515187206,
+          "utilization": 0.9632069423937072
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 57,
+          "busy_seconds": 0.5145324170000001,
+          "utilization": 0.9619827324303042
+        }
+      ],
+      "workers": 4,
+      "policy": "longest-first",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 0.587009415961802,
+      "execution_seconds": 0.536352459,
+      "overhead_seconds": 0.05065695696180206,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 419.500267453794,
+      "mean_latency_seconds": 0.00917311855555555,
+      "median_latency_seconds": 0.005031583,
+      "p95_latency_seconds": 0.028221334,
+      "total_work_seconds": 2.063951675,
+      "max_job_seconds": 0.062191959,
+      "min_job_seconds": 0.001130291,
+      "cpu_seconds": 0.021992,
+      "cpu_utilization": 4.10028883637504,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 57,
+          "busy_seconds": 0.5163790449999999,
+          "utilization": 0.9627606554890428
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 56,
+          "busy_seconds": 0.5168342529999999,
+          "utilization": 0.9636093660568076
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 56,
+          "busy_seconds": 0.5151591289999999,
+          "utilization": 0.96048618843006
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 56,
+          "busy_seconds": 0.5155792480000002,
+          "utilization": 0.9612694774650046
+        }
+      ],
+      "workers": 4,
+      "policy": "longest-first",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 0.5781529578380287,
+      "execution_seconds": 0.531380167,
+      "overhead_seconds": 0.046772790838028655,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 423.425663908905,
+      "mean_latency_seconds": 0.00908458609777778,
+      "median_latency_seconds": 0.005017083,
+      "p95_latency_seconds": 0.028194667,
+      "total_work_seconds": 2.044031872,
+      "max_job_seconds": 0.055845041,
+      "min_job_seconds": 0.001068209,
+      "cpu_seconds": 0.021216,
+      "cpu_utilization": 3.99262172688504,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.5101678360000002,
+          "utilization": 0.9600806873923093
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 56,
+          "busy_seconds": 0.511956874,
+          "utilization": 0.9634474634052347
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 57,
+          "busy_seconds": 0.5103829149999999,
+          "utilization": 0.9604854428072771
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 56,
+          "busy_seconds": 0.511524247,
+          "utilization": 0.9626333061843462
+        }
+      ],
+      "workers": 4,
+      "policy": "longest-first",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 0.5905174589715898,
+      "execution_seconds": 0.532042833,
+      "overhead_seconds": 0.05847462597158981,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 422.89828195092,
+      "mean_latency_seconds": 0.00911040353777778,
+      "median_latency_seconds": 0.005005625,
+      "p95_latency_seconds": 0.02809175,
+      "total_work_seconds": 2.049840796,
+      "max_job_seconds": 0.055881416,
+      "min_job_seconds": 0.001143375,
+      "cpu_seconds": 0.021339,
+      "cpu_utilization": 4.01076730602252,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.5122616280000002,
+          "utilization": 0.9628202772914718
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 57,
+          "busy_seconds": 0.5120788779999998,
+          "utilization": 0.962476789909131
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 56,
+          "busy_seconds": 0.512545249,
+          "utilization": 0.9633533565520278
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 56,
+          "busy_seconds": 0.5129550409999999,
+          "utilization": 0.9641235802531709
+        }
+      ],
+      "workers": 4,
+      "policy": "longest-first",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 0.5847792499698699,
+      "execution_seconds": 0.547094709,
+      "overhead_seconds": 0.03768454096986984,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 411.26334489921,
+      "mean_latency_seconds": 0.00910009796,
+      "median_latency_seconds": 0.005270167,
+      "p95_latency_seconds": 0.028193542,
+      "total_work_seconds": 2.047522041,
+      "max_job_seconds": 0.041362708,
+      "min_job_seconds": 0.001106875,
+      "cpu_seconds": 0.03795,
+      "cpu_utilization": 6.93664175063334,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.5059479570000001,
+          "utilization": 0.924790440625519
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 57,
+          "busy_seconds": 0.526761124,
+          "utilization": 0.9628335191960337
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 56,
+          "busy_seconds": 0.4926000019999999,
+          "utilization": 0.900392553421678
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 56,
+          "busy_seconds": 0.5222129580000001,
+          "utilization": 0.954520212696848
+        }
+      ],
+      "workers": 4,
+      "policy": "shortest-first",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 0.5837297081016004,
+      "execution_seconds": 0.5484625,
+      "overhead_seconds": 0.035267208101600445,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 410.237709961939,
+      "mean_latency_seconds": 0.00914395127111111,
+      "median_latency_seconds": 0.005289917,
+      "p95_latency_seconds": 0.028223667,
+      "total_work_seconds": 2.057389036,
+      "max_job_seconds": 0.041188541,
+      "min_job_seconds": 0.001163,
+      "cpu_seconds": 0.033743,
+      "cpu_utilization": 6.15228935433143,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.524990582,
+          "utilization": 0.957204151605625
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 57,
+          "busy_seconds": 0.5091413720000001,
+          "utilization": 0.9283066244273768
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 58,
+          "busy_seconds": 0.528651334,
+          "utilization": 0.963878722793263
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 54,
+          "busy_seconds": 0.4946057479999999,
+          "utilization": 0.9018041306379195
+        }
+      ],
+      "workers": 4,
+      "policy": "shortest-first",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 0.5818467922508717,
+      "execution_seconds": 0.545981167,
+      "overhead_seconds": 0.03586562525087167,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 412.102126592216,
+      "mean_latency_seconds": 0.00909296278222222,
+      "median_latency_seconds": 0.005323042,
+      "p95_latency_seconds": 0.028254958,
+      "total_work_seconds": 2.045916626,
+      "max_job_seconds": 0.041250708,
+      "min_job_seconds": 0.00111225,
+      "cpu_seconds": 0.03279,
+      "cpu_utilization": 6.0057016582039,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 57,
+          "busy_seconds": 0.492292498,
+          "utilization": 0.9016657125830863
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 54,
+          "busy_seconds": 0.5273434149999999,
+          "utilization": 0.9658637456262296
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 57,
+          "busy_seconds": 0.5200228760000001,
+          "utilization": 0.9524557025608908
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 57,
+          "busy_seconds": 0.5062578369999999,
+          "utilization": 0.927244138807447
+        }
+      ],
+      "workers": 4,
+      "policy": "shortest-first",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 0.6336123337969184,
+      "execution_seconds": 0.550629042,
+      "overhead_seconds": 0.08298329179691843,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 408.623561123389,
+      "mean_latency_seconds": 0.00915325092,
+      "median_latency_seconds": 0.005237416,
+      "p95_latency_seconds": 0.029052,
+      "total_work_seconds": 2.059481457,
+      "max_job_seconds": 0.041235583,
+      "min_job_seconds": 0.001110667,
+      "cpu_seconds": 0.034123,
+      "cpu_utilization": 6.19709412276151,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 56,
+          "busy_seconds": 0.511120208,
+          "utilization": 0.928247820244832
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 57,
+          "busy_seconds": 0.530457914,
+          "utilization": 0.9633671193100636
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 55,
+          "busy_seconds": 0.522634917,
+          "utilization": 0.9491597375642965
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 57,
+          "busy_seconds": 0.495268418,
+          "utilization": 0.8994593096671425
+        }
+      ],
+      "workers": 4,
+      "policy": "shortest-first",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 0.5869285841472447,
+      "execution_seconds": 0.5469695,
+      "overhead_seconds": 0.039959084147244694,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 411.357488854497,
+      "mean_latency_seconds": 0.00911290239555556,
+      "median_latency_seconds": 0.005277667,
+      "p95_latency_seconds": 0.028172625,
+      "total_work_seconds": 2.050403039,
+      "max_job_seconds": 0.041083458,
+      "min_job_seconds": 0.0011305,
+      "cpu_seconds": 0.033184,
+      "cpu_utilization": 6.06688307117673,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 55,
+          "busy_seconds": 0.49233775300000004,
+          "utilization": 0.9001192077437591
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 55,
+          "busy_seconds": 0.522989912,
+          "utilization": 0.9561591862069092
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 57,
+          "busy_seconds": 0.507752793,
+          "utilization": 0.9283018394992774
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 58,
+          "busy_seconds": 0.527322581,
+          "utilization": 0.9640804121619212
+        }
+      ],
+      "workers": 4,
+      "policy": "shortest-first",
+      "rep": 5
+    },
+    {
+      "harness_seconds": 0.5850472920574248,
+      "execution_seconds": 0.539769083,
+      "overhead_seconds": 0.045278209057424745,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 416.844919589439,
+      "mean_latency_seconds": 0.00911115833777778,
+      "median_latency_seconds": 0.005134208,
+      "p95_latency_seconds": 0.029005916,
+      "total_work_seconds": 2.050010626,
+      "max_job_seconds": 0.041441292,
+      "min_job_seconds": 0.001022,
+      "cpu_seconds": 0.02594,
+      "cpu_utilization": 4.80575876184446,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 53,
+          "busy_seconds": 0.5119506269999999,
+          "utilization": 0.948462301980345
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 57,
+          "busy_seconds": 0.5099141250000001,
+          "utilization": 0.944689388591751
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 55,
+          "busy_seconds": 0.519149959,
+          "utilization": 0.9618001018409571
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 60,
+          "busy_seconds": 0.5089959150000001,
+          "utilization": 0.9429882722645677
+        }
+      ],
+      "workers": 4,
+      "policy": "lifo",
+      "rep": 1
+    },
+    {
+      "harness_seconds": 0.5776612921617925,
+      "execution_seconds": 0.53459,
+      "overhead_seconds": 0.04307129216179251,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 420.883293739127,
+      "mean_latency_seconds": 0.00906880500888889,
+      "median_latency_seconds": 0.005201959,
+      "p95_latency_seconds": 0.028658917,
+      "total_work_seconds": 2.040481127,
+      "max_job_seconds": 0.041470333,
+      "min_job_seconds": 0.001070208,
+      "cpu_seconds": 0.023456,
+      "cpu_utilization": 4.38766157241999,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 57,
+          "busy_seconds": 0.5068607140000001,
+          "utilization": 0.948129807890159
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 53,
+          "busy_seconds": 0.5101102510000001,
+          "utilization": 0.9542083671598797
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 59,
+          "busy_seconds": 0.516694201,
+          "utilization": 0.9665242541012737
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 56,
+          "busy_seconds": 0.5068159610000001,
+          "utilization": 0.9480460932677381
+        }
+      ],
+      "workers": 4,
+      "policy": "lifo",
+      "rep": 2
+    },
+    {
+      "harness_seconds": 0.5851855832152069,
+      "execution_seconds": 0.536847709,
+      "overhead_seconds": 0.048337874215206855,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 419.113272214784,
+      "mean_latency_seconds": 0.00910132129777778,
+      "median_latency_seconds": 0.005160667,
+      "p95_latency_seconds": 0.028825541,
+      "total_work_seconds": 2.047797292,
+      "max_job_seconds": 0.041635458,
+      "min_job_seconds": 0.001067958,
+      "cpu_seconds": 0.023509,
+      "cpu_utilization": 4.37908174066549,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 55,
+          "busy_seconds": 0.5197257499999999,
+          "utilization": 0.9681064877190337
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 51,
+          "busy_seconds": 0.5102499180000001,
+          "utilization": 0.9504556123569116
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 58,
+          "busy_seconds": 0.508231249,
+          "utilization": 0.9466953858230958
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 61,
+          "busy_seconds": 0.5095903749999999,
+          "utilization": 0.9492270646907053
+        }
+      ],
+      "workers": 4,
+      "policy": "lifo",
+      "rep": 3
+    },
+    {
+      "harness_seconds": 0.5883562918752432,
+      "execution_seconds": 0.535563291,
+      "overhead_seconds": 0.05279300087524319,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 420.118413231575,
+      "mean_latency_seconds": 0.00908213759555555,
+      "median_latency_seconds": 0.005120875,
+      "p95_latency_seconds": 0.0289655,
+      "total_work_seconds": 2.043480959,
+      "max_job_seconds": 0.041596333,
+      "min_job_seconds": 0.0010335,
+      "cpu_seconds": 0.023774,
+      "cpu_utilization": 4.4390645138522,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 47,
+          "busy_seconds": 0.512295458,
+          "utilization": 0.9565544663142344
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 59,
+          "busy_seconds": 0.5077634150000001,
+          "utilization": 0.9480922675859801
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 65,
+          "busy_seconds": 0.5152646280000002,
+          "utilization": 0.9620984795987448
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 54,
+          "busy_seconds": 0.5081574580000001,
+          "utilization": 0.948828021896669
+        }
+      ],
+      "workers": 4,
+      "policy": "lifo",
+      "rep": 4
+    },
+    {
+      "harness_seconds": 0.5776459160260856,
+      "execution_seconds": 0.535829459,
+      "overhead_seconds": 0.04181645702608561,
+      "jobs_total": 225,
+      "jobs_completed": 225,
+      "trading_days": 17346,
+      "first_date": "1950-01-03",
+      "last_date": "2018-12-07",
+      "throughput": 419.909723552545,
+      "mean_latency_seconds": 0.00909972593333333,
+      "median_latency_seconds": 0.005226333,
+      "p95_latency_seconds": 0.028763334,
+      "total_work_seconds": 2.047438335,
+      "max_job_seconds": 0.04167675,
+      "min_job_seconds": 0.001058667,
+      "cpu_seconds": 0.024035,
+      "cpu_utilization": 4.48556898026019,
+      "max_concurrent": 4,
+      "best_job_id": "don-mid-13",
+      "best_sharpe_ratio": 0.639594861338878,
+      "best_total_return": 61.5093574579928,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35",
+      "worker_stats": [
+        {
+          "worker_id": "worker-1",
+          "jobs": 55,
+          "busy_seconds": 0.5188811640000001,
+          "utilization": 0.9683699828082801
+        },
+        {
+          "worker_id": "worker-2",
+          "jobs": 58,
+          "busy_seconds": 0.5084255070000001,
+          "utilization": 0.9488569515174792
+        },
+        {
+          "worker_id": "worker-3",
+          "jobs": 61,
+          "busy_seconds": 0.5078718289999999,
+          "utilization": 0.9478236414022917
+        },
+        {
+          "worker_id": "worker-4",
+          "jobs": 51,
+          "busy_seconds": 0.512259835,
+          "utilization": 0.9560128253418781
+        }
+      ],
+      "workers": 4,
+      "policy": "lifo",
+      "rep": 5
+    }
+  ],
+  "summary": [
+    {
+      "workers": 2,
+      "policy": "fifo",
+      "makespan_seconds": 1.012301166,
+      "makespan_min_seconds": 1.010761292,
+      "makespan_max_seconds": 1.01646575,
+      "harness_seconds": 1.0785139161162078,
+      "throughput": 222.265870629255,
+      "mean_latency_seconds": 0.00860608016444445,
+      "total_work_seconds": 1.936368037,
+      "max_job_seconds": 0.039659416,
+      "lower_bound_seconds": 0.9681840185,
+      "makespan_gap_seconds": 0.044117147500000065,
+      "efficiency": 0.9564189502277032,
+      "worker_busy_max_seconds": 0.97350883,
+      "worker_busy_min_seconds": 0.9656088669999999,
+      "worker_imbalance": 1.003563743901991,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 2,
+      "policy": "longest-first",
+      "makespan_seconds": 1.007739375,
+      "makespan_min_seconds": 1.006697209,
+      "makespan_max_seconds": 1.033274875,
+      "harness_seconds": 1.078957459423691,
+      "throughput": 223.272014155446,
+      "mean_latency_seconds": 0.00859744494666667,
+      "total_work_seconds": 1.934425113,
+      "max_job_seconds": 0.054931375,
+      "lower_bound_seconds": 0.9672125565,
+      "makespan_gap_seconds": 0.04052681850000006,
+      "efficiency": 0.9597844249164125,
+      "worker_busy_max_seconds": 0.9676785810000003,
+      "worker_busy_min_seconds": 0.9667465319999994,
+      "worker_imbalance": 1.0004818222187757,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 2,
+      "policy": "shortest-first",
+      "makespan_seconds": 1.014887,
+      "makespan_min_seconds": 1.014346667,
+      "makespan_max_seconds": 1.028483208,
+      "harness_seconds": 1.0721524581313133,
+      "throughput": 221.699558670079,
+      "mean_latency_seconds": 0.00859494795111111,
+      "total_work_seconds": 1.933863289,
+      "max_job_seconds": 0.039632917,
+      "lower_bound_seconds": 0.9669316445,
+      "makespan_gap_seconds": 0.047955355500000074,
+      "efficiency": 0.9527480837768145,
+      "worker_busy_max_seconds": 0.9756967089999997,
+      "worker_busy_min_seconds": 0.95816658,
+      "worker_imbalance": 1.0090648232994095,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 2,
+      "policy": "lifo",
+      "makespan_seconds": 1.015814917,
+      "makespan_min_seconds": 1.005913042,
+      "makespan_max_seconds": 1.0349955,
+      "harness_seconds": 1.077988666947931,
+      "throughput": 221.497042654671,
+      "mean_latency_seconds": 0.00866518018666667,
+      "total_work_seconds": 1.949665542,
+      "max_job_seconds": 0.040925416,
+      "lower_bound_seconds": 0.974832771,
+      "makespan_gap_seconds": 0.04098214599999994,
+      "efficiency": 0.959655892708258,
+      "worker_busy_max_seconds": 0.9776274140000004,
+      "worker_busy_min_seconds": 0.9720381280000001,
+      "worker_imbalance": 1.002497339356212,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 4,
+      "policy": "fifo",
+      "makespan_seconds": 0.541740084,
+      "makespan_min_seconds": 0.538768584,
+      "makespan_max_seconds": 0.56073675,
+      "harness_seconds": 0.5864560003392398,
+      "throughput": 415.328321911657,
+      "mean_latency_seconds": 0.00910076979111111,
+      "total_work_seconds": 2.047673203,
+      "max_job_seconds": 0.041152959,
+      "lower_bound_seconds": 0.51191830075,
+      "makespan_gap_seconds": 0.029821783249999956,
+      "efficiency": 0.9449518613616193,
+      "worker_busy_max_seconds": 0.524372329,
+      "worker_busy_min_seconds": 0.49799083600000005,
+      "worker_imbalance": 1.0234907954094663,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 4,
+      "policy": "longest-first",
+      "makespan_seconds": 0.532042833,
+      "makespan_min_seconds": 0.531380167,
+      "makespan_max_seconds": 0.536352459,
+      "harness_seconds": 0.587009415961802,
+      "throughput": 422.89828195092,
+      "mean_latency_seconds": 0.00911040353777778,
+      "total_work_seconds": 2.049840796,
+      "max_job_seconds": 0.055881416,
+      "lower_bound_seconds": 0.512460199,
+      "makespan_gap_seconds": 0.019582634000000043,
+      "efficiency": 0.9631935010014503,
+      "worker_busy_max_seconds": 0.5129550409999999,
+      "worker_busy_min_seconds": 0.5120788779999998,
+      "worker_imbalance": 1.0016402210579856,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 4,
+      "policy": "shortest-first",
+      "makespan_seconds": 0.547094709,
+      "makespan_min_seconds": 0.545981167,
+      "makespan_max_seconds": 0.550629042,
+      "harness_seconds": 0.5847792499698699,
+      "throughput": 411.26334489921,
+      "mean_latency_seconds": 0.00911290239555556,
+      "total_work_seconds": 2.050403039,
+      "max_job_seconds": 0.041235583,
+      "lower_bound_seconds": 0.51260075975,
+      "makespan_gap_seconds": 0.034493949250000044,
+      "efficiency": 0.9369506802340506,
+      "worker_busy_max_seconds": 0.5273434149999999,
+      "worker_busy_min_seconds": 0.4926000019999999,
+      "worker_imbalance": 1.0290704831538366,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    },
+    {
+      "workers": 4,
+      "policy": "lifo",
+      "makespan_seconds": 0.535829459,
+      "makespan_min_seconds": 0.53459,
+      "makespan_max_seconds": 0.539769083,
+      "harness_seconds": 0.5850472920574248,
+      "throughput": 419.909723552545,
+      "mean_latency_seconds": 0.00909972593333333,
+      "total_work_seconds": 2.047438335,
+      "max_job_seconds": 0.041596333,
+      "lower_bound_seconds": 0.51185958375,
+      "makespan_gap_seconds": 0.02396987525000005,
+      "efficiency": 0.9552658502674821,
+      "worker_busy_max_seconds": 0.5188811640000001,
+      "worker_busy_min_seconds": 0.5078718289999999,
+      "worker_imbalance": 1.0129702791111288,
+      "digest": "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    }
+  ],
+  "consistency": {
+    "ok": true,
+    "digests": [
+      "e8d20088c6d87a6788096459185d27e1281d16e2e23b35c02026759199d53f35"
+    ],
+    "runs": 41
+  }
+}

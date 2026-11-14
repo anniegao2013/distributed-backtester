@@ -20,7 +20,7 @@ experiment service ──────> local parallel runner
 | --- | --- | --- |
 | Core engine | Market data, strategies, order execution, portfolio accounting, metrics, and ranking. | [`include/backtester/trading`](include/backtester/trading) |
 | Experiment service | Versioned JSON requests, grid expansion, local parallel execution, deterministic aggregation, and result JSON. | [`docs/experiments.md`](docs/experiments.md) |
-| Coordinator | Worker registration, FIFO dispatch, retries, job state, timeouts, persistence, and aggregation. | [`docs/coordinator.md`](docs/coordinator.md) |
+| Coordinator | Worker registration, configurable pending-job scheduling (FIFO by default), retries, job state, timeouts, persistence, and aggregation. | [`docs/coordinator.md`](docs/coordinator.md) |
 | Worker | A thin, stateless process that runs one job at a time with the core engine. | [`docs/worker.md`](docs/worker.md) |
 | Protocol and transport | Versioned JSON messages over a transport-neutral channel with TCP framing. | [`docs/protocol.md`](docs/protocol.md), [`docs/communication.md`](docs/communication.md) |
 
@@ -29,8 +29,9 @@ experiment service ──────> local parallel runner
 - **The coordinator owns job state.** Workers only execute jobs and report one
   result. `pending`, `running`, `completed`, and `failed` never leave the
   coordinator's state table.
-- **Dispatch is FIFO and worker-driven.** A worker takes the oldest queued job
-  when it becomes free, so one slow job does not block idle workers. The
+- **Dispatch is worker-driven.** A worker takes the next queued job when it
+  becomes free, so one slow job does not block idle workers. The default policy
+  is FIFO; longest-first, shortest-first, and LIFO can reorder pending work. The
   coordinator can prefetch a small adaptive pipeline per worker to hide the
   dispatch round trip.
 - **A job is terminal only when completed or failed.** Retries are bounded
@@ -64,8 +65,9 @@ experiment service ──────> local parallel runner
 
 - Coordinator/worker split over TCP, with an optional stdio transport for local
   debugging.
-- FIFO distribution, bounded retries, reassignment after worker loss, per-job
-  timeouts, and duplicate-result suppression.
+- FIFO or duration-estimate-based pending-job scheduling, bounded retries,
+  reassignment after worker loss, per-job timeouts, and duplicate-result
+  suppression.
 - Optional durable state with restart recovery; completed runs return without
   waiting for workers.
 - Per-job states, attempt counts, retries, timeouts, disconnects, duplicates, and
@@ -103,6 +105,14 @@ For wall-clock, throughput, and speedup across concurrency levels, run
 work inflation, and per-worker utilization in
 [`benchmarks/scheduling.md`](benchmarks/scheduling.md).
 
+To compare pending-job dispatch orders, run
+`python3 benchmarks/compare_scheduling.py --workers 4`. It runs the
+heterogeneous 225-job sweep in
+[`experiments/heterogeneous_scheduling.json`](experiments/heterogeneous_scheduling.json)
+under FIFO, longest-first, shortest-first, and LIFO, and writes makespan,
+efficiency, and worker-balance results to
+[`benchmarks/scheduling_policies.md`](benchmarks/scheduling_policies.md).
+
 ## Running
 
 Local execution is the default:
@@ -125,7 +135,10 @@ Distributed execution starts the coordinator first, then the workers:
 ./build/backtester_worker --worker-id worker-a --connect 127.0.0.1:9000
 ./build/backtester_worker --worker-id worker-b --connect 127.0.0.1:9000
 
-# Retries, persistence, and timeouts are coordinator options.
+# Retries, persistence, timeouts, and scheduling are coordinator options.
+./build/backtester_coordinator \
+  --experiment experiments/heterogeneous_scheduling.json --workers 2 \
+  --scheduling-policy longest-first
 ./build/backtester_coordinator \
   --experiment experiments/demo.json --workers 2 \
   --max-attempts 5 --job-timeout 60 --state run-state.json

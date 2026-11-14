@@ -1,6 +1,7 @@
 #pragma once
 
 #include "coordinator/job_state.h"
+#include "coordinator/scheduling.h"
 #include "experiment/experiment.h"
 #include "net/tcp.h"
 
@@ -15,12 +16,14 @@
 //
 // The coordinator is the TCP server. It binds a listening socket, accepts the
 // configured number of workers, waits for each worker's worker_ready
-// announcement, then dispatches the experiment's expanded jobs. Jobs are queued
-// in request order and handed out FIFO to whichever worker finishes first, so a
-// slow job never blocks the others. Each worker executes one job at a time and
-// replies with exactly one backtest_result. When the queue is empty the
-// coordinator sends shutdown to every worker and aggregates the results into the
-// same ExperimentResult that a local run produces.
+// announcement, then dispatches the experiment's expanded jobs. Pending jobs
+// are queued in request order and handed out under the configured scheduling
+// policy. The default is FIFO, so a slow job never blocks the others; the
+// optional priority policies reorder pending work by estimated duration. Each
+// worker executes one job at a time and replies with exactly one
+// backtest_result. When the queue is empty the coordinator sends shutdown to
+// every worker and aggregates the results into the same ExperimentResult that
+// a local run produces.
 //
 // The coordinator owns the authoritative job state table: jobs start pending
 // in its queue, move to running when a worker takes them, and end completed or
@@ -82,6 +85,13 @@ struct CoordinatorConfig {
     // from the critical path. The effective target shrinks toward 1 as the
     // queue drains so the last few jobs stay evenly distributed.
     std::size_t dispatch_batch_size = 1;
+
+    // Order in which pending jobs are offered to workers. FIFO preserves
+    // request order and needs no duration estimate. LIFO is a stack baseline.
+    // ShortestJobFirst minimizes mean waiting time; LongestJobFirst
+    // approximates the makespan-optimal schedule for several workers. The
+    // duration estimate comes from strategy parameters, so it is heuristic.
+    SchedulingPolicy scheduling_policy = SchedulingPolicy::Fifo;
 
     // Optional path to a durable coordinator state file. When empty (the
     // default) the run is entirely in memory. When set, the coordinator loads

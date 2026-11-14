@@ -1,0 +1,93 @@
+{
+  "$schema": "../schema/experiment.schema.json",
+  "schema_version": 1,
+  "experiment_id": "heterogeneous-scheduling",
+  "description": "Heterogeneous 225-job workload for comparing scheduling policies. Four moving-average bands, four Donchian bands, and an RSI band mix cheap and expensive jobs so makespan depends on dispatch order.",
+  "data": {
+    "path": "data/market/sp500_1950_2018.csv",
+    "asset": "SP500",
+    "start_date": "1950-01-03",
+    "end_date": "2018-12-31"
+  },
+  "execution": {
+    "initial_cash": 10000.0,
+    "transaction_cost_rate": 0.001,
+    "slippage_rate": 0.0005,
+    "max_concurrent_jobs": 0
+  },
+  "strategies": [
+    {
+      "id": "ma-fast",
+      "type": "moving_average_crossover",
+      "grid": {
+        "short_window": [5, 10, 15, 20, 25],
+        "long_window": [30, 50, 70, 90, 110]
+      }
+    },
+    {
+      "id": "ma-mid",
+      "type": "moving_average_crossover",
+      "grid": {
+        "short_window": [30, 40, 50, 60, 70],
+        "long_window": [120, 150, 180, 210, 240]
+      }
+    },
+    {
+      "id": "ma-slow",
+      "type": "moving_average_crossover",
+      "grid": {
+        "short_window": [80, 90, 100, 110, 120],
+        "long_window": [260, 300, 340, 380, 420]
+      }
+    },
+    {
+      "id": "ma-extreme",
+      "type": "moving_average_crossover",
+      "grid": {
+        "short_window": [120, 140, 160, 180, 200],
+        "long_window": [500, 650, 800, 1000, 1200]
+      }
+    },
+    {
+      "id": "rsi",
+      "type": "rsi_mean_reversion",
+      "grid": {
+        "rsi_period": [2, 3, 5, 7, 10],
+        "oversold_threshold": [20, 25, 30, 35, 40],
+        "exit_threshold": [70]
+      }
+    },
+    {
+      "id": "don-fast",
+      "type": "donchian_channel_breakout",
+      "grid": {
+        "entry_period": [3, 5, 8, 12, 20],
+        "exit_period": [3, 5, 8, 12, 20]
+      }
+    },
+    {
+      "id": "don-mid",
+      "type": "donchian_channel_breakout",
+      "grid": {
+        "entry_period": [30, 50, 80, 110, 140],
+        "exit_period": [30, 50, 80, 110, 140]
+      }
+    },
+    {
+      "id": "don-slow",
+      "type": "donchian_channel_breakout",
+      "grid": {
+        "entry_period": [160, 200, 250, 320, 400],
+        "exit_period": [160, 200, 250, 320, 400]
+      }
+    },
+    {
+      "id": "don-extreme",
+      "type": "donchian_channel_breakout",
+      "grid": {
+        "entry_period": [450, 600, 800, 1000, 1200],
+        "exit_period": [450, 600, 800, 1000, 1200]
+      }
+    }
+  ]
+}

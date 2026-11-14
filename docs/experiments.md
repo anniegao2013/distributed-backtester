@@ -314,6 +314,7 @@ ExperimentResult result = run_experiment(request);       // loads data + runs
 | [`experiments/crossover_sweep.json`](../experiments/crossover_sweep.json) | A small parameter grid. |
 | [`experiments/rsi_sweep.json`](../experiments/rsi_sweep.json) | Explicit execution costs and concurrency. |
 | [`experiments/donchian_breakout.json`](../experiments/donchian_breakout.json) | A single explicit configuration with trades included. |
+| [`experiments/heterogeneous_scheduling.json`](../experiments/heterogeneous_scheduling.json) | A 225-job mixed-strategy sweep with fast and slow bands for scheduling benchmarks. |
 
 ## Distributed execution
 

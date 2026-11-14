@@ -38,11 +38,12 @@ aggregate and return
    experiment's data, execution, and output settings.
 2. After loading state and market data, the coordinator binds its listener and
    waits for the configured number of `worker_ready` announcements.
-3. Every pending job enters a thread-safe FIFO queue in request order. The queue
-   is closed for new work, but retries may still be requeued at the back.
-4. Each worker thread takes one concurrency permit, then claims the oldest
-   queued job. A job always wins over the liveness interval, so the queue stays
-   FIFO.
+3. Every pending job enters a thread-safe pending-job queue in request order.
+   The queue is closed for new work, but retries may still be requeued at the
+   logical back.
+4. Each worker thread takes one concurrency permit, then claims the next job
+   under the configured scheduling policy. FIFO claims the oldest job; the
+   priority policies may reorder pending work.
 5. With dispatch prefetching enabled, the coordinator keeps more than one job
    assigned to a busy worker. It sends the next job before the current reply
    arrives, records each attempt when the message is sent, and consumes replies
@@ -62,6 +63,30 @@ min(execution.max_concurrent_jobs or hardware_concurrency, connected workers)
 Each active pipeline may hold up to `dispatch_batch_size` assigned jobs, but a
 worker only runs one of them at a time.
 
+### Scheduling policies
+
+`--scheduling-policy` (or `CoordinatorConfig::scheduling_policy`) changes only
+the order in which pending jobs are offered to workers:
+
+| Policy | Order | Intended effect |
+| --- | --- | --- |
+| `fifo` | Request order (default) | Fair start order; no duration estimate. |
+| `lifo` | Most recently queued first | Stack-discipline control baseline. |
+| `shortest-first` | Smallest estimated job first | Lower mean job latency, at the risk of a long straggler. |
+| `longest-first` | Largest estimated job first | LPT-style heuristic that usually shortens makespan. |
+
+The two estimated policies use `estimate_job_cost()`, which ranks jobs from
+strategy parameters: moving-average jobs grow with `short_window +
+long_window`, Donchian jobs grow with `entry_period + exit_period`, and RSI jobs
+share a constant estimate because their per-bar work does not depend on the
+period. The estimate is relative, not a predicted clock time. Equal estimates
+keep insertion order.
+
+Retries always enter the logical back of the queue, so a retry does not jump
+ahead of queued work under FIFO. Under the priority policies, a retry is still
+ranked by its estimate, and under LIFO it is popped last. Changing the policy
+does not change any job result: outcomes are written back by request index.
+
 Idle workers stay available until every job is terminal, because another worker
 may still requeue a retry.
 
@@ -69,14 +94,15 @@ may still requeue a retry.
 
 | State | Meaning |
 | --- | --- |
-| `pending` | Waiting in the FIFO queue. |
+| `pending` | Waiting in the pending-job queue. |
 | `running` | Assigned to a worker and awaiting a result. |
 | `completed` | A successful result was recorded. |
 | `failed` | Execution, transport, timeout, or result processing failed terminally. |
 
 A job becomes `running` only after its message is successfully sent. If sending
-fails, it stays `pending` and returns to the front of the queue. A retryable
-attempt returns it to `pending`; success and terminal failures are final.
+fails, it stays `pending` and returns to the logical front of the queue. A
+retryable attempt returns it to `pending`; success and terminal failures are
+final.
 
 Observers can subscribe through `CoordinatorConfig::on_job_state_changed`.
 `CoordinatorStats::job_states` and `job_attempts` expose the final state and
@@ -193,6 +219,7 @@ when they apply.
 | `--no-retry-failed-results` | off | Retry only `worker_error` and transport/timeout failures, not `failed` results. |
 | `--job-timeout SECONDS` | `0` | Reply deadline per attempt; `0` disables it. |
 | `--dispatch-batch N` | `1` | Maximum jobs kept assigned to one worker before waiting for a reply; the target shrinks near the queue tail. |
+| `--scheduling-policy NAME` | `fifo` | Pending-job order: `fifo`, `lifo`, `shortest-first`, or `longest-first`. |
 | `--state PATH` | off | Durable coordinator state and restart recovery. |
 | `--json` | off | Emit the aggregated result JSON. |
 
@@ -210,6 +237,7 @@ config.max_job_attempts = 3;
 config.retry_failed_results = true;
 config.job_timeout = std::chrono::seconds(30); // 0 disables
 config.dispatch_batch_size = 4;                // 1 disables prefetching
+config.scheduling_policy = SchedulingPolicy::LongestJobFirst;
 config.state_path = "run-state.json";          // empty disables
 config.log = [](const std::string& line) { /* stderr */ };
 config.on_job_state_changed = [](const JobStateTransition& change) {

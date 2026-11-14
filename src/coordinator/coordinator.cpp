@@ -1409,10 +1409,15 @@ ExperimentResult run_distributed_experiment(
 
     listener.close();
 
-    // Only pending jobs enter the FIFO queue. Recovered terminal jobs keep the
-    // outcomes restored above; recovered running jobs were normalized to
-    // pending and carry their attempt count forward.
-    JobQueue queue;
+    // Only pending jobs enter the pending-job queue. Recovered terminal jobs
+    // keep the outcomes restored above; recovered running jobs were normalized
+    // to pending and carry their attempt count forward.
+    JobQueue queue(config.scheduling_policy);
+
+    logger.log(
+        std::string("scheduling policy: ") +
+        scheduling_policy_name(config.scheduling_policy)
+    );
 
     std::vector<BacktestJobMessage> messages = build_job_messages(request);
     for (std::size_t i = 0; i < messages.size(); ++i) {

@@ -79,6 +79,7 @@ add_library(backtester_core
     src/coordinator/job_queue.cpp
     src/coordinator/job_state.cpp
     src/coordinator/persistent_state.cpp
+    src/coordinator/scheduling.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)

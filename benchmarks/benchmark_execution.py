@@ -100,6 +100,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--scheduling-policy",
+        default="fifo",
+        choices=("fifo", "lifo", "shortest-first", "longest-first"),
+        help=(
+            "Coordinator pending-job order for process runs "
+            "(default: fifo)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default=str(REPO_ROOT / "benchmarks" / "results.md"),
         help="Markdown report path (default: benchmarks/results.md).",
@@ -391,6 +400,11 @@ def summarize(
             f"Run reported {summary['jobs_failed']} failed job(s)"
         )
 
+    durations = [
+        float(result.get("duration_seconds", 0.0))
+        for result in document.get("results", [])
+    ]
+
     return {
         "harness_seconds": harness_seconds,
         "execution_seconds": float(summary["wall_seconds"]),
@@ -405,6 +419,8 @@ def summarize(
         "median_latency_seconds": float(performance["median_latency"]),
         "p95_latency_seconds": float(performance["p95_latency"]),
         "total_work_seconds": float(performance["total_work_seconds"]),
+        "max_job_seconds": max(durations, default=0.0),
+        "min_job_seconds": min(durations, default=0.0),
         "cpu_seconds": float(performance["cpu_seconds"]),
         "cpu_utilization": float(performance["cpu_utilization"]),
         "max_concurrent": int(performance["max_concurrent"]),
@@ -519,6 +535,7 @@ def run_processes(
     workers: int,
     timeout: float,
     dispatch_batch: int = 1,
+    scheduling_policy: str | None = None,
 ) -> dict[str, Any]:
     port = free_port()
 
@@ -542,6 +559,12 @@ def run_processes(
             str(dispatch_batch),
             "--json",
         ]
+
+        if scheduling_policy is not None:
+            coordinator_command[-1:-1] = [
+                "--scheduling-policy",
+                scheduling_policy,
+            ]
 
         worker_procs: list[subprocess.Popen[bytes]] = []
         start = time.perf_counter()
@@ -634,6 +657,7 @@ def run_mode(
     workers: int,
     timeout: float,
     dispatch_batch: int = 1,
+    scheduling_policy: str | None = None,
 ) -> dict[str, Any]:
     if mode == "processes":
         record = run_processes(
@@ -642,6 +666,7 @@ def run_mode(
             workers,
             timeout,
             dispatch_batch,
+            scheduling_policy,
         )
     else:
         record = run_local(binaries["backtester"], experiments[mode], timeout)
@@ -732,7 +757,8 @@ def build_markdown(
     lines.append(
         f"| Processes | {args.workers} | Coordinator plus {args.workers} "
         "`backtester_worker` processes over loopback TCP "
-        f"(`--max-attempts 1`, `--dispatch-batch {args.dispatch_batch}`). |"
+        f"(`--max-attempts 1`, `--dispatch-batch {args.dispatch_batch}`, "
+        f"`--scheduling-policy {args.scheduling_policy}`). |"
     )
     lines.append("")
 
@@ -888,7 +914,9 @@ def build_markdown(
     lines.append(
         f"python3 benchmarks/benchmark_execution.py "
         f"--build-dir build/release --workers {args.workers} "
-        f"--reps {args.reps} --warmup {args.warmup}"
+        f"--reps {args.reps} --warmup {args.warmup} "
+        f"--dispatch-batch {args.dispatch_batch} "
+        f"--scheduling-policy {args.scheduling_policy}"
     )
     lines.append("```")
     lines.append("")
@@ -948,6 +976,7 @@ def main() -> int:
                     args.workers,
                     args.timeout,
                     args.dispatch_batch,
+                    args.scheduling_policy,
                 )
                 warmup_digests.append(warmup_record["digest"])
 
@@ -964,6 +993,7 @@ def main() -> int:
                     args.workers,
                     args.timeout,
                     args.dispatch_batch,
+                    args.scheduling_policy,
                 )
                 record["rep"] = rep
                 runs.append(record)
@@ -1049,6 +1079,8 @@ def main() -> int:
                     "workers": args.workers,
                     "reps": args.reps,
                     "warmup": args.warmup,
+                    "dispatch_batch": args.dispatch_batch,
+                    "scheduling_policy": args.scheduling_policy,
                     "build_dir": env["build_dir"],
                     "experiment": display_path(experiment_path),
                 },
