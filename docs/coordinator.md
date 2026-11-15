@@ -76,11 +76,12 @@ the order in which pending jobs are offered to workers:
 | `longest-first` | Largest estimated job first | LPT-style heuristic that usually shortens makespan. |
 
 The two estimated policies use `estimate_job_cost()`, which ranks jobs from
-strategy parameters: moving-average jobs grow with `short_window +
-long_window`, Donchian jobs grow with `entry_period + exit_period`, and RSI jobs
-share a constant estimate because their per-bar work does not depend on the
-period. The estimate is relative, not a predicted clock time. Equal estimates
-keep insertion order.
+strategy parameters: moving-average and Donchian estimates grow with their
+lookback lengths, and RSI jobs share a constant estimate. The estimate is
+relative, not a predicted clock time, and it is no longer calibrated to
+measured cost now that the indicators are incremental: lookback length is
+mostly fixed per-bar overhead, so the priority policies sit close to FIFO.
+Equal estimates keep insertion order.
 
 Retries always enter the logical back of the queue, so a retry does not jump
 ahead of queued work under FIFO. Under the priority policies, a retry is still

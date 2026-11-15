@@ -333,6 +333,9 @@ def build_markdown(
     max_process = processes[-1] if processes else None
     busiest = max_process
 
+    jobs_total = float(source["workload"]["jobs"])
+    sequential_per_job = sequential["work_seconds"] / jobs_total
+
     low_idle = [
         f"{sequential['idle_per_job_seconds'] * 1000:.2f} ms sequentially"
     ]
@@ -375,7 +378,21 @@ def build_markdown(
         idle_text += ". At the maximum level it rises to " + " and ".join(
             max_idle
         )
-    idle_text += ", so idle capacity is not the main scaling limit."
+    worst_idle = max(
+        (
+            config["idle_per_job_seconds"]
+            for config in threads + processes
+        ),
+        default=0.0,
+    )
+    if sequential_per_job > 0 and worst_idle >= 0.25 * sequential_per_job:
+        idle_text += (
+            f". The worst case is {worst_idle / sequential_per_job * 100:.0f}% "
+            "of a sequential job, so per-job dispatch and queueing overhead is "
+            "now a co-equal scaling limit, not just a low-concurrency detail."
+        )
+    else:
+        idle_text += ", so idle capacity is not the main scaling limit."
     lines.append(idle_text)
 
     occupancy = []
@@ -389,12 +406,25 @@ def build_markdown(
             f"{max_process['utilization'] * 100:.1f}% for "
             f"{max_process['workers']} processes"
         )
-    lines.append(
-        "- **Occupancy stays high.** Worker utilization is "
-        + " and ".join(occupancy)
-        + ". The distributed dispatcher keeps every worker busy almost "
-        "continuously."
+    min_process_utilization = min(
+        (config["utilization"] for config in processes),
+        default=1.0,
     )
+    if min_process_utilization < 0.80:
+        lines.append(
+            "- **Threads stay saturated; process occupancy does not.** Worker "
+            "utilization is "
+            + " and ".join(occupancy)
+            + ". With sub-millisecond jobs, worker setup and the TCP dispatch "
+            "round trip are a visible share of each process-mode slot."
+        )
+    else:
+        lines.append(
+            "- **Occupancy stays high.** Worker utilization is "
+            + " and ".join(occupancy)
+            + ". The distributed dispatcher keeps every worker busy almost "
+            "continuously."
+        )
 
     inflation = []
     if max_thread:
@@ -415,9 +445,9 @@ def build_markdown(
     if max_process and processes:
         inflation_text += (
             f" For processes, {processes[0]['work_inflation']:.2f}x is "
-            "already present with one worker, which is close to noise after "
-            "the worker dataset cache removes per-job CSV parsing. "
-            "Concurrency adds "
+            "already present with one worker: with jobs this small, fixed "
+            "per-job worker setup is a larger fraction of the measured "
+            "duration, so it is not the CSV parse. Concurrency adds "
             f"{max_process['work_seconds'] / processes[0]['work_seconds']:.2f}x "
             "more through contention and CPU oversubscription."
         )
@@ -439,8 +469,9 @@ def build_markdown(
         f"utilization falls from {sequential['baseline_work_utilization'] * 100:.1f}% "
         "sequentially to "
         + " and ".join(useful)
-        + ". High process occupancy mostly reflects work inflation under "
-        "contention, not additional useful backtest throughput."
+        + ". The gap is inflated job cost. In process mode a growing share of "
+        "that gap is fixed per-job worker setup and dispatch rather than "
+        "useful backtest throughput."
     )
 
     if busiest and busiest["worker_stats"]:
@@ -465,8 +496,8 @@ def build_markdown(
             f"{max_process['coordinator_cpu_seconds']:.3f} s versus "
             f"{max_process['work_seconds']:.2f} s of worker busy time "
             f"({max_process['coordinator_cpu_seconds'] / max_process['work_seconds'] * 100:.1f}%). "
-            "The cost of distribution is paid in first-load overhead and "
-            "contention inside the workers."
+            "The cost of distribution is paid in fixed per-job worker setup, "
+            "dispatch, and contention inside the workers."
         )
     lines.append("")
 
@@ -488,8 +519,9 @@ def build_markdown(
         "decompose those causes."
     )
     lines.append(
-        "- Figures come from one host and one 240-job workload. Absolute "
-        "utilization will differ with job size, data size, and core count."
+        f"- Figures come from one host and one {source['workload']['jobs']}-job "
+        "workload. Absolute utilization will differ with job size, data size, "
+        "and core count."
     )
     lines.append("")
     lines.append("## Reproduction")

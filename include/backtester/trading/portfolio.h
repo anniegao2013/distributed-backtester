@@ -64,6 +64,12 @@ public:
         const std::map<std::string, double>& prices
     ) const;
 
+    // Single-symbol fast path for hot loops: cash plus the position in
+    // `symbol` marked at `price`. Equivalent to equity({{symbol, price}})
+    // without allocating a price map. Throws std::invalid_argument if the
+    // portfolio holds a different symbol or the price is invalid.
+    double equity_at(const std::string& symbol, double price) const;
+
 private:
     double cash_;
     std::map<std::string, Position> positions_;

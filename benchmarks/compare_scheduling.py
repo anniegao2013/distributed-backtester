@@ -340,10 +340,12 @@ def build_markdown(
     lines.append("")
     lines.append(
         "`longest-first` and `shortest-first` use a duration estimate derived "
-        "from strategy parameters: moving-average cost grows with "
-        "`short_window + long_window`, Donchian cost grows with "
-        "`entry_period + exit_period`, and RSI cost is constant. The estimate "
-        "is a relative heuristic, not a learned model."
+        "from strategy parameters: moving-average and Donchian estimates grow "
+        "with their lookback lengths, and the RSI estimate is constant. The "
+        "estimate is a coarse ordering heuristic, not a calibrated cost model. "
+        "Since the indicators became incremental, lookback length no longer "
+        "predicts measured job cost, so the priority policies are expected to "
+        "stay close to FIFO."
     )
     lines.append("")
 

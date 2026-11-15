@@ -43,9 +43,9 @@ bool parse_scheduling_policy(
 // parameters. It is a scheduling heuristic, not a predicted wall-clock time: a
 // larger number means the job is expected to take longer.
 //
-// Moving-average and Donchian strategies do O(window) work per bar, so their
-// cost grows with the lookback lengths. RSI does O(1) work per bar after
-// warm-up, so all RSI configurations get the same estimate. The per-strategy
-// scale factors approximate the fixed per-bar engine overhead seen on the
-// bundled daily dataset; only relative order matters to the queue.
+// This estimate grew out of the original O(window)-per-bar indicators. Moving
+// average and Donchian now update their channels and averages incrementally, so
+// their measured cost is dominated by fixed per-bar engine work and lookback
+// length no longer predicts it. The window-based estimate is retained as a
+// coarse ordering heuristic; only its relative order matters to the queue.
 double estimate_job_cost(const BacktestJob& job);

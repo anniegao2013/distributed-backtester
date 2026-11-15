@@ -142,6 +142,39 @@ void test_equity_requires_prices_for_held_symbols() {
     expect(threw, "Missing price for a held symbol should throw");
 }
 
+void test_equity_at_matches_map_equity() {
+    Portfolio portfolio(10000.0);
+
+    expect(
+        near(portfolio.equity_at("AAPL", 0.0), 10000.0),
+        "Flat portfolio equity_at should equal cash"
+    );
+
+    portfolio.buy("AAPL", 10.0, 100.0, 1.0);
+
+    // Cash: 10000 - 1001 = 8999. Equity at 160: 8999 + 1600 = 10599.
+    expect(
+        near(portfolio.equity_at("AAPL", 160.0), 10599.0),
+        "equity_at should value the single held symbol"
+    );
+    expect(
+        near(
+            portfolio.equity_at("AAPL", 160.0),
+            portfolio.equity({{"AAPL", 160.0}})),
+        "equity_at must agree with the map overload"
+    );
+
+    bool threw = false;
+
+    try {
+        (void)portfolio.equity_at("MSFT", 200.0);
+    } catch (const std::invalid_argument&) {
+        threw = true;
+    }
+
+    expect(threw, "equity_at must reject a different held symbol");
+}
+
 void test_invalid_trades_throw() {
     Portfolio portfolio(100.0);
 
@@ -223,6 +256,7 @@ int main() {
         test_equity_is_cash_plus_market_value();
         test_equity_with_only_cash();
         test_equity_requires_prices_for_held_symbols();
+        test_equity_at_matches_map_equity();
         test_invalid_trades_throw();
         test_invalid_initial_cash_throws();
 
