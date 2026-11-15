@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -116,19 +117,25 @@ JobResult run_backtest(
     };
     validate_execution_config(execution);
 
-    // Keep all bars up to the end date, including pre-range warm-up bars.
-    // This relies on the dataset being sorted by date.
-    std::vector<MarketBar> bars;
-    for (const MarketBar& bar : dataset) {
-        if (bar.date <= config.end_date) {
-            bars.push_back(bar);
+    // Index directly into the dataset instead of copying the in-range bars.
+    // This relies on the dataset being sorted by date. end_index is one past
+    // the last usable bar, including pre-range warm-up bars.
+    const auto end_it = std::upper_bound(
+        dataset.begin(),
+        dataset.end(),
+        config.end_date,
+        [](const std::string& date, const MarketBar& bar) {
+            return date < bar.date;
         }
-    }
+    );
+
+    const std::size_t end_index =
+        static_cast<std::size_t>(end_it - dataset.begin());
 
     // Find the first bar that belongs to the actual backtest period.
     const auto start_it = std::lower_bound(
-        bars.begin(),
-        bars.end(),
+        dataset.begin(),
+        end_it,
         config.start_date,
         [](const MarketBar& bar, const std::string& date) {
             return bar.date < date;
@@ -136,18 +143,10 @@ JobResult run_backtest(
     );
 
     const std::size_t start_index =
-        static_cast<std::size_t>(start_it - bars.begin());
+        static_cast<std::size_t>(start_it - dataset.begin());
 
-    if (start_index == bars.size()) {
-        throw std::invalid_argument(
-            "No market data found in the requested date range"
-        );
-    }
-
-    // Verify that at least one bar falls within the requested range.
-    // Since bars are sorted and clipped at end_date, this also checks
-    // that the first bar on/after start_date is not after end_date.
-    if (bars[start_index].date > config.end_date) {
+    // A start at or past end_index means no bar falls within the range.
+    if (start_index == end_index) {
         throw std::invalid_argument(
             "No market data found in the requested date range"
         );
@@ -164,21 +163,21 @@ JobResult run_backtest(
     std::vector<Trade> executed_trades;
 
     std::vector<MarketBar> history;
-    history.reserve(bars.size());
+    history.reserve(end_index);
 
     std::vector<double> equity_curve;
-    equity_curve.reserve(bars.size() - start_index);
+    equity_curve.reserve(end_index - start_index);
 
     // Warm-up: give the strategy historical context, but ignore signals.
     // No positions, trades, or performance observations are created here.
     for (std::size_t i = 0; i < start_index; ++i) {
-        history.push_back(bars[i]);
+        history.push_back(dataset[i]);
         (void)strategy.on_bar(history, false);
     }
 
     // Actual backtest: portfolio accounting starts at start_index.
-    for (std::size_t i = start_index; i < bars.size(); ++i) {
-        const MarketBar& bar = bars[i];
+    for (std::size_t i = start_index; i < end_index; ++i) {
+        const MarketBar& bar = dataset[i];
 
         // Execute the previous in-range bar's signal at today's open.
         // Signals are only intent: the engine decides order size, fill

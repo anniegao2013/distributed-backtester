@@ -95,6 +95,8 @@ def run_metrics(
             baseline_work / available if available > 0 else 0.0
         ),
         "speedup": baseline_wall / wall if wall > 0 else 0.0,
+        "median_job_seconds": float(record["median_latency_seconds"]),
+        "p90_job_seconds": float(record["p90_latency_seconds"]),
         "coordinator_cpu_seconds": float(record["cpu_seconds"]),
         "fixed_overhead_seconds": float(record["overhead_seconds"]),
     }
@@ -127,6 +129,8 @@ def aggregate_config(
             metrics, "baseline_work_utilization"
         ),
         "speedup": median(metrics, "speedup"),
+        "median_job_seconds": median(metrics, "median_job_seconds"),
+        "p90_job_seconds": median(metrics, "p90_job_seconds"),
         "coordinator_cpu_seconds": median(
             metrics, "coordinator_cpu_seconds"
         ),
@@ -227,6 +231,10 @@ def build_markdown(
         "available worker-time. This estimates the fraction of capacity "
         "spent on the original backtest work, excluding inflated job cost. |"
     )
+    lines.append(
+        "| Median / p90 job latency | Typical and tail per-job durations. "
+        "Inflation ratios divide each configuration by the sequential value. |"
+    )
     lines.append("")
     lines.append(
         "Both local and process modes reuse parsed datasets across jobs. "
@@ -266,6 +274,48 @@ def build_markdown(
         "Values are medians across repetitions. Execution wall excludes "
         "process startup and initial data loading; those appear in the "
         "harness overhead column of `scaling.md`."
+    )
+    lines.append("")
+
+    lines.append("## Per-job latency inflation")
+    lines.append("")
+    lines.append(
+        "The busy-work ratio above is a sum and therefore tracks the mean. "
+        "Splitting the same jobs into a median and a p90 separates a broad "
+        "slowdown from a tail caused by core placement or descheduling."
+    )
+    lines.append("")
+    lines.append(
+        "| Mode | Workers | Median job (ms) | Median vs sequential "
+        "| p90 job (ms) | p90 vs sequential |"
+    )
+    lines.append("| --- | ---: | ---: | ---: | ---: | ---: |")
+
+    base_median = sequential["median_job_seconds"]
+    base_p90 = sequential["p90_job_seconds"]
+
+    for config in configs:
+        median_ratio = (
+            config["median_job_seconds"] / base_median
+            if base_median > 0
+            else 0.0
+        )
+        p90_ratio = (
+            config["p90_job_seconds"] / base_p90 if base_p90 > 0 else 0.0
+        )
+        lines.append(
+            f"| {config['label']} | {config['workers']} "
+            f"| {config['median_job_seconds'] * 1000:.3f} "
+            f"| {median_ratio:.2f}x "
+            f"| {config['p90_job_seconds'] * 1000:.3f} "
+            f"| {p90_ratio:.2f}x |"
+        )
+
+    lines.append("")
+    lines.append(
+        "A configuration whose p90 inflation greatly exceeds its median "
+        "inflation is only slow for a subset of jobs. That pattern points to "
+        "scheduling and core placement rather than uniform work inflation."
     )
     lines.append("")
 
@@ -453,6 +503,35 @@ def build_markdown(
         )
     lines.append(inflation_text)
 
+    # Compare median and p90 inflation so the report distinguishes a broad
+    # slowdown from a tail caused by core placement or descheduling.
+    tail_notes = []
+    for config in threads + processes:
+        median_ratio = (
+            config["median_job_seconds"] / base_median
+            if base_median > 0
+            else 0.0
+        )
+        p90_ratio = (
+            config["p90_job_seconds"] / base_p90 if base_p90 > 0 else 0.0
+        )
+        if p90_ratio >= 1.25 and p90_ratio >= 1.15 * median_ratio:
+            tail_notes.append((config, median_ratio, p90_ratio))
+
+    if tail_notes:
+        config, median_ratio, p90_ratio = max(
+            tail_notes, key=lambda item: item[2] / max(item[1], 1e-9)
+        )
+        lines.append(
+            "- **Inflation is concentrated in the tail.** For "
+            f"{config['label'].lower()} at {config['workers']} workers the "
+            f"median job is {median_ratio:.2f}x sequential but the p90 is "
+            f"{p90_ratio:.2f}x. A distribution that shifts uniformly would "
+            "move both together; a widening gap means only a subset of jobs "
+            "is slow, which points to scheduling and core placement rather "
+            "than to uniform contention in the per-bar work."
+        )
+
     useful = []
     if max_thread:
         useful.append(
@@ -515,8 +594,9 @@ def build_markdown(
     )
     lines.append(
         "- Work inflation aggregates CPU contention, cache and memory "
-        "pressure, file I/O, and CPU oversubscription; this report does not "
-        "decompose those causes."
+        "pressure, file I/O, and CPU oversubscription. The median/p90 split "
+        "separates a broad slowdown from a tail but does not attribute the "
+        "tail to a specific hardware or OS cause."
     )
     lines.append(
         f"- Figures come from one host and one {source['workload']['jobs']}-job "

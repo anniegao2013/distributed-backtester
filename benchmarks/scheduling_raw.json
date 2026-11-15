@@ -1,9 +1,9 @@
 {
-  "captured_at": "2026-11-14 13:57:11 PST",
+  "captured_at": "2026-11-14 17:09:22 PST",
   "source": "benchmarks/scaling_raw.json",
   "baseline": {
-    "wall_seconds": 0.1456995,
-    "work_seconds": 0.145563293
+    "wall_seconds": 0.100428583,
+    "work_seconds": 0.100293204
   },
   "configs": [
     {
@@ -11,17 +11,19 @@
       "label": "Sequential",
       "kind": "local",
       "workers": 1,
-      "wall_seconds": 0.1456995,
-      "work_seconds": 0.145563293,
-      "available_seconds": 0.1456995,
-      "idle_seconds": 0.0001389200000000146,
-      "utilization": 0.9990429870487737,
-      "idle_per_job_seconds": 5.788333333333941e-07,
+      "wall_seconds": 0.100428583,
+      "work_seconds": 0.100293204,
+      "available_seconds": 0.100428583,
+      "idle_seconds": 0.0001484500000000083,
+      "utilization": 0.9985151225887083,
+      "idle_per_job_seconds": 6.185416666667013e-07,
       "work_inflation": 1.0,
-      "baseline_work_utilization": 0.9990651512187756,
+      "baseline_work_utilization": 0.9986519873530426,
       "speedup": 1.0,
-      "coordinator_cpu_seconds": 0.145129,
-      "fixed_overhead_seconds": 0.018546749943971624,
+      "median_job_seconds": 0.000412375,
+      "p90_job_seconds": 0.000432291,
+      "coordinator_cpu_seconds": 0.100288,
+      "fixed_overhead_seconds": 0.020368167125076053,
       "worker_stats": []
     },
     {
@@ -29,17 +31,19 @@
       "label": "Threads",
       "kind": "local",
       "workers": 2,
-      "wall_seconds": 0.074764375,
-      "work_seconds": 0.149194121,
-      "available_seconds": 0.14952875,
-      "idle_seconds": 0.0003618809999999806,
-      "utilization": 0.9975798567165178,
-      "idle_per_job_seconds": 1.5078374999999192e-06,
-      "work_inflation": 1.0249432939113297,
-      "baseline_work_utilization": 0.9734803039549252,
-      "speedup": 1.9487824247845318,
-      "coordinator_cpu_seconds": 0.149333,
-      "fixed_overhead_seconds": 0.018443374884720323,
+      "wall_seconds": 0.052270084,
+      "work_seconds": 0.104273296,
+      "available_seconds": 0.104540168,
+      "idle_seconds": 0.00027225100000000113,
+      "utilization": 0.9973836338300929,
+      "idle_per_job_seconds": 1.1343791666666714e-06,
+      "work_inflation": 1.0396845632731009,
+      "baseline_work_utilization": 0.9593748117948309,
+      "speedup": 1.9213396136880132,
+      "median_job_seconds": 0.000427917,
+      "p90_job_seconds": 0.000444125,
+      "coordinator_cpu_seconds": 0.104206,
+      "fixed_overhead_seconds": 0.018449832716426612,
       "worker_stats": []
     },
     {
@@ -47,17 +51,19 @@
       "label": "Threads",
       "kind": "local",
       "workers": 4,
-      "wall_seconds": 0.042022417,
-      "work_seconds": 0.166795075,
-      "available_seconds": 0.168089668,
-      "idle_seconds": 0.0013743270000000085,
-      "utilization": 0.992223558833096,
-      "idle_per_job_seconds": 5.726362500000035e-06,
-      "work_inflation": 1.1458594509812303,
-      "baseline_work_utilization": 0.8659859629206955,
-      "speedup": 3.4671851454903226,
-      "coordinator_cpu_seconds": 0.166677,
-      "fixed_overhead_seconds": 0.019480333223879334,
+      "wall_seconds": 0.027979667,
+      "work_seconds": 0.110444208,
+      "available_seconds": 0.111918668,
+      "idle_seconds": 0.001382671000000002,
+      "utilization": 0.9876285071372314,
+      "idle_per_job_seconds": 5.761129166666675e-06,
+      "work_inflation": 1.1012132786185593,
+      "baseline_work_utilization": 0.896125783055245,
+      "speedup": 3.589341610105653,
+      "median_job_seconds": 0.000445167,
+      "p90_job_seconds": 0.000495375,
+      "coordinator_cpu_seconds": 0.110225,
+      "fixed_overhead_seconds": 0.018719207793946743,
       "worker_stats": []
     },
     {
@@ -65,17 +71,19 @@
       "label": "Threads",
       "kind": "local",
       "workers": 8,
-      "wall_seconds": 0.037818083,
-      "work_seconds": 0.29914217,
-      "available_seconds": 0.302544664,
-      "idle_seconds": 0.005258374999999982,
-      "utilization": 0.9831597096610487,
-      "idle_per_job_seconds": 2.1909895833333258e-05,
-      "work_inflation": 2.055065970512222,
-      "baseline_work_utilization": 0.4811299299596968,
-      "speedup": 3.852641076492428,
-      "coordinator_cpu_seconds": 0.24655,
-      "fixed_overhead_seconds": 0.019657916929010866,
+      "wall_seconds": 0.023350209,
+      "work_seconds": 0.182411164,
+      "available_seconds": 0.186801672,
+      "idle_seconds": 0.0033286670000000074,
+      "utilization": 0.9816472259606546,
+      "idle_per_job_seconds": 1.3869445833333364e-05,
+      "work_inflation": 1.8187789074920768,
+      "baseline_work_utilization": 0.5368967147146306,
+      "speedup": 4.300971481668537,
+      "median_job_seconds": 0.000451625,
+      "p90_job_seconds": 0.001453334,
+      "coordinator_cpu_seconds": 0.156706,
+      "fixed_overhead_seconds": 0.018753833135179043,
       "worker_stats": []
     },
     {
@@ -83,23 +91,25 @@
       "label": "Processes",
       "kind": "processes",
       "workers": 1,
-      "wall_seconds": 0.247369416,
-      "work_seconds": 0.17170245,
-      "available_seconds": 0.247369416,
-      "idle_seconds": 0.075666966,
-      "utilization": 0.6941134954209537,
-      "idle_per_job_seconds": 0.000315279025,
-      "work_inflation": 1.179572448941506,
-      "baseline_work_utilization": 0.5884449878799892,
-      "speedup": 0.5889956097078711,
-      "coordinator_cpu_seconds": 0.017039,
-      "fixed_overhead_seconds": 0.07250133395413422,
+      "wall_seconds": 0.189601209,
+      "work_seconds": 0.125392747,
+      "available_seconds": 0.189601209,
+      "idle_seconds": 0.06571770599999999,
+      "utilization": 0.6533898367705029,
+      "idle_per_job_seconds": 0.00027382377499999996,
+      "work_inflation": 1.2502616528234556,
+      "baseline_work_utilization": 0.5289692219209425,
+      "speedup": 0.5296832416295405,
+      "median_job_seconds": 0.000452208,
+      "p90_job_seconds": 0.000489875,
+      "coordinator_cpu_seconds": 0.016306,
+      "fixed_overhead_seconds": 0.07412879082098175,
       "worker_stats": [
         {
           "worker_id": "worker-1",
           "jobs": 240,
-          "busy_seconds": 0.17170244999999995,
-          "utilization": 0.6941134954209535
+          "busy_seconds": 0.12539274699999997,
+          "utilization": 0.6533898367705024
         }
       ]
     },
@@ -108,29 +118,31 @@
       "label": "Processes",
       "kind": "processes",
       "workers": 2,
-      "wall_seconds": 0.1373965,
-      "work_seconds": 0.190014288,
-      "available_seconds": 0.274793,
-      "idle_seconds": 0.08261982600000001,
-      "utilization": 0.6995756993229043,
-      "idle_per_job_seconds": 0.000344249275,
-      "work_inflation": 1.3053722822827318,
-      "baseline_work_utilization": 0.5297197999949053,
-      "speedup": 1.0604309425640392,
-      "coordinator_cpu_seconds": 0.017039,
-      "fixed_overhead_seconds": 0.07380345768376326,
+      "wall_seconds": 0.110484833,
+      "work_seconds": 0.14822808,
+      "available_seconds": 0.220969666,
+      "idle_seconds": 0.06989900700000001,
+      "utilization": 0.6816667322419893,
+      "idle_per_job_seconds": 0.00029124586250000006,
+      "work_inflation": 1.4779473991079197,
+      "baseline_work_utilization": 0.45387770102345176,
+      "speedup": 0.908980719552701,
+      "median_job_seconds": 0.000482125,
+      "p90_job_seconds": 0.000547667,
+      "coordinator_cpu_seconds": 0.017835,
+      "fixed_overhead_seconds": 0.040417333698013064,
       "worker_stats": [
         {
           "worker_id": "worker-1",
           "jobs": 120,
-          "busy_seconds": 0.09595232599999999,
-          "utilization": 0.6983607733821457
+          "busy_seconds": 0.07404412400000003,
+          "utilization": 0.6827174910338358
         },
         {
           "worker_id": "worker-2",
           "jobs": 120,
-          "busy_seconds": 0.09537328799999997,
-          "utilization": 0.6947610083044928
+          "busy_seconds": 0.07418395599999995,
+          "utilization": 0.680615973450143
         }
       ]
     },
@@ -139,41 +151,43 @@
       "label": "Processes",
       "kind": "processes",
       "workers": 4,
-      "wall_seconds": 0.088134791,
-      "work_seconds": 0.251720921,
-      "available_seconds": 0.352539164,
-      "idle_seconds": 0.10193375600000004,
-      "utilization": 0.710858348776251,
-      "idle_per_job_seconds": 0.0004247239833333335,
-      "work_inflation": 1.7292884477407362,
-      "baseline_work_utilization": 0.4128996374428346,
-      "speedup": 1.6531439894150315,
-      "coordinator_cpu_seconds": 0.021917,
-      "fixed_overhead_seconds": 0.06567987510752249,
+      "wall_seconds": 0.0696835,
+      "work_seconds": 0.197825133,
+      "available_seconds": 0.278734,
+      "idle_seconds": 0.080908867,
+      "utilization": 0.7091952558344671,
+      "idle_per_job_seconds": 0.00033712027916666667,
+      "work_inflation": 1.9724679749985852,
+      "baseline_work_utilization": 0.3598169007010268,
+      "speedup": 1.441210372613316,
+      "median_job_seconds": 0.00051225,
+      "p90_job_seconds": 0.000739834,
+      "coordinator_cpu_seconds": 0.021902,
+      "fixed_overhead_seconds": 0.08514962495052815,
       "worker_stats": [
         {
           "worker_id": "worker-1",
-          "jobs": 60,
-          "busy_seconds": 0.06295729100000001,
-          "utilization": 0.714934642446516
+          "jobs": 59,
+          "busy_seconds": 0.04993458600000001,
+          "utilization": 0.7074173511938417
         },
         {
           "worker_id": "worker-2",
-          "jobs": 60,
-          "busy_seconds": 0.06317895999999999,
-          "utilization": 0.7046994529095779
+          "jobs": 61,
+          "busy_seconds": 0.04919700199999998,
+          "utilization": 0.7060064721203726
         },
         {
           "worker_id": "worker-3",
-          "jobs": 60,
-          "busy_seconds": 0.06307112699999999,
-          "utilization": 0.7153753050824162
+          "jobs": 59,
+          "busy_seconds": 0.04979958100000003,
+          "utilization": 0.7192478304058845
         },
         {
           "worker_id": "worker-4",
-          "jobs": 60,
-          "busy_seconds": 0.06344295500000001,
-          "utilization": 0.7148969395656106
+          "jobs": 59,
+          "busy_seconds": 0.04947341900000002,
+          "utilization": 0.7095045294777804
         }
       ]
     },
@@ -182,65 +196,67 @@
       "label": "Processes",
       "kind": "processes",
       "workers": 8,
-      "wall_seconds": 0.08500525,
-      "work_seconds": 0.489859661,
-      "available_seconds": 0.680042,
-      "idle_seconds": 0.18935036600000005,
-      "utilization": 0.7215607771284714,
-      "idle_per_job_seconds": 0.0007889598583333335,
-      "work_inflation": 3.3652691616422827,
-      "baseline_work_utilization": 0.21405044541366564,
-      "speedup": 1.7140058996356107,
-      "coordinator_cpu_seconds": 0.053076,
-      "fixed_overhead_seconds": 0.07863499998620152,
+      "wall_seconds": 0.068938833,
+      "work_seconds": 0.382248752,
+      "available_seconds": 0.551510664,
+      "idle_seconds": 0.16926191200000001,
+      "utilization": 0.6909045427572535,
+      "idle_per_job_seconds": 0.0007052579666666667,
+      "work_inflation": 3.8113125990072074,
+      "baseline_work_utilization": 0.1818517946191517,
+      "speedup": 1.4567781122723675,
+      "median_job_seconds": 0.000639667,
+      "p90_job_seconds": 0.001471292,
+      "coordinator_cpu_seconds": 0.040322,
+      "fixed_overhead_seconds": 0.09031854198274017,
       "worker_stats": [
         {
           "worker_id": "worker-1",
-          "jobs": 30,
-          "busy_seconds": 0.059687417000000006,
-          "utilization": 0.7101875560498646
+          "jobs": 29,
+          "busy_seconds": 0.04836412499999999,
+          "utilization": 0.7108229212021668
         },
         {
           "worker_id": "worker-2",
-          "jobs": 28,
-          "busy_seconds": 0.060787667,
-          "utilization": 0.7232788221460983
+          "jobs": 30,
+          "busy_seconds": 0.047759457999999984,
+          "utilization": 0.692780192551272
         },
         {
           "worker_id": "worker-3",
-          "jobs": 30,
-          "busy_seconds": 0.06156042,
-          "utilization": 0.7100561699503926
+          "jobs": 29,
+          "busy_seconds": 0.04908771000000001,
+          "utilization": 0.7019038871501049
         },
         {
           "worker_id": "worker-4",
           "jobs": 31,
-          "busy_seconds": 0.06148750199999999,
-          "utilization": 0.7233376997303107
+          "busy_seconds": 0.046370708000000004,
+          "utilization": 0.6726355231455687
         },
         {
           "worker_id": "worker-5",
-          "jobs": 33,
-          "busy_seconds": 0.058982293,
-          "utilization": 0.6938664729531411
+          "jobs": 27,
+          "busy_seconds": 0.05100920700000001,
+          "utilization": 0.7399197923759459
         },
         {
           "worker_id": "worker-6",
-          "jobs": 33,
-          "busy_seconds": 0.059713371999999994,
-          "utilization": 0.7009233900259102
+          "jobs": 29,
+          "busy_seconds": 0.049033128,
+          "utilization": 0.7112555560666366
         },
         {
           "worker_id": "worker-7",
-          "jobs": 27,
-          "busy_seconds": 0.06275333400000002,
-          "utilization": 0.73822892115487
+          "jobs": 34,
+          "busy_seconds": 0.045122792,
+          "utilization": 0.5905941012959349
         },
         {
           "worker_id": "worker-8",
           "jobs": 30,
-          "busy_seconds": 0.060124662999999995,
-          "utilization": 0.715390104321179
+          "busy_seconds": 0.047485872000000005,
+          "utilization": 0.6888116600407205
         }
       ]
     }

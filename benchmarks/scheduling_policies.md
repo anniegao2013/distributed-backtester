@@ -1,6 +1,6 @@
 # Scheduling-policy comparison
 
-Captured 2026-11-14 13:57:22 PST on this machine:
+Captured 2026-11-14 17:09:14 PST on this machine:
 
 | Property | Value |
 | --- | --- |
@@ -14,7 +14,7 @@ Captured 2026-11-14 13:57:22 PST on this machine:
 
 225 independent backtests over 17,346 daily bars (1950-01-03 to 2018-12-07, `data/market/sp500_1950_2018.csv`).
 
-The sweep mixes moving-average crossover, RSI mean reversion, and Donchian channel breakout jobs across fast and slow parameter bands. Job durations measured at concurrency 1 range from 0.000 s to 0.001 s, with a median of 0.001 s. The summed job work is 0.184 s.
+The sweep mixes moving-average crossover, RSI mean reversion, and Donchian channel breakout jobs across fast and slow parameter bands. Job durations measured at concurrency 1 range from 0.000 s to 0.001 s, with a median of 0.000 s. The summed job work is 0.144 s.
 
 | Policy | Pending-job order |
 | --- | --- |
@@ -38,28 +38,28 @@ The sweep mixes moving-average crossover, RSI mean reversion, and Donchian chann
 
 | Policy | Makespan (s) | Range (s) | vs FIFO | Throughput (jobs/s) | Mean latency (ms) | Efficiency | Lower bound (s) | Gap (s) | Busiest worker (s) | Imbalance |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `fifo` | 0.154 | 0.152-0.155 | 1.00x | 1458.4 | 1.03 | 75% | 0.116 | 0.039 | 0.116 | 1.00 |
-| `longest-first` | 0.153 | 0.152-0.154 | 1.01x | 1471.1 | 1.03 | 76% | 0.115 | 0.037 | 0.116 | 1.00 |
-| `shortest-first` | 0.153 | 0.152-0.154 | 1.01x | 1474.2 | 1.02 | 75% | 0.115 | 0.038 | 0.115 | 1.00 |
-| `lifo` | 0.152 | 0.150-0.154 | 1.02x | 1480.9 | 1.02 | 76% | 0.115 | 0.037 | 0.115 | 1.00 |
+| `fifo` | 0.130 | 0.129-0.164 | 1.00x | 1724.4 | 0.84 | 73% | 0.095 | 0.035 | 0.095 | 1.00 |
+| `longest-first` | 0.129 | 0.128-0.130 | 1.01x | 1739.5 | 0.83 | 72% | 0.094 | 0.036 | 0.094 | 1.00 |
+| `shortest-first` | 0.130 | 0.128-0.130 | 1.01x | 1735.4 | 0.84 | 72% | 0.094 | 0.036 | 0.094 | 1.00 |
+| `lifo` | 0.129 | 0.128-0.130 | 1.01x | 1740.1 | 0.84 | 73% | 0.094 | 0.035 | 0.094 | 1.00 |
 
 ## Results: 4 workers
 
 | Policy | Makespan (s) | Range (s) | vs FIFO | Throughput (jobs/s) | Mean latency (ms) | Efficiency | Lower bound (s) | Gap (s) | Busiest worker (s) | Imbalance |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| `fifo` | 0.095 | 0.094-0.097 | 1.00x | 2357.7 | 1.28 | 76% | 0.072 | 0.023 | 0.072 | 1.00 |
-| `longest-first` | 0.094 | 0.093-0.099 | 1.01x | 2387.4 | 1.27 | 76% | 0.072 | 0.023 | 0.072 | 1.01 |
-| `shortest-first` | 0.094 | 0.092-0.097 | 1.01x | 2391.3 | 1.27 | 76% | 0.072 | 0.022 | 0.072 | 1.01 |
-| `lifo` | 0.094 | 0.094-0.096 | 1.01x | 2382.8 | 1.29 | 77% | 0.072 | 0.022 | 0.073 | 1.01 |
+| `fifo` | 0.075 | 0.074-0.076 | 1.00x | 2985.0 | 1.02 | 76% | 0.057 | 0.018 | 0.058 | 1.01 |
+| `longest-first` | 0.075 | 0.074-0.076 | 1.01x | 3006.9 | 1.02 | 76% | 0.057 | 0.018 | 0.058 | 1.01 |
+| `shortest-first` | 0.076 | 0.074-0.084 | 0.99x | 2954.9 | 1.01 | 75% | 0.057 | 0.019 | 0.057 | 1.01 |
+| `lifo` | 0.075 | 0.075-0.077 | 1.00x | 2991.6 | 1.00 | 75% | 0.057 | 0.019 | 0.057 | 1.01 |
 
 ## Observations
 
-- **2 workers:** `lifo` has the shortest makespan, 0.152 s, 1.02x faster than FIFO (0.154 s).
-- **Longest-first vs FIFO at 2 workers:** 0.153 s versus 0.154 s (1.01x). Its gap to the lower bound is 0.037 s.
-- **Shortest-first vs FIFO at 2 workers:** 0.153 s versus 0.154 s (1.01x). Mean job latency is 1.02 ms versus 1.03 ms for FIFO.
-- **4 workers:** `shortest-first` has the shortest makespan, 0.094 s, 1.01x faster than FIFO (0.095 s).
-- **Longest-first vs FIFO at 4 workers:** 0.094 s versus 0.095 s (1.01x). Its gap to the lower bound is 0.023 s.
-- **Shortest-first vs FIFO at 4 workers:** 0.094 s versus 0.095 s (1.01x). Mean job latency is 1.27 ms versus 1.28 ms for FIFO.
+- **2 workers:** `lifo` has the shortest makespan, 0.129 s, 1.01x faster than FIFO (0.130 s).
+- **Longest-first vs FIFO at 2 workers:** 0.129 s versus 0.130 s (1.01x). Its gap to the lower bound is 0.036 s.
+- **Shortest-first vs FIFO at 2 workers:** 0.130 s versus 0.130 s (1.01x). Mean job latency is 0.84 ms versus 0.84 ms for FIFO.
+- **4 workers:** `longest-first` has the shortest makespan, 0.075 s, 1.01x faster than FIFO (0.075 s).
+- **Longest-first vs FIFO at 4 workers:** 0.075 s versus 0.075 s (1.01x). Its gap to the lower bound is 0.018 s.
+- **Shortest-first vs FIFO at 4 workers:** 0.076 s versus 0.075 s (0.99x). Mean job latency is 1.01 ms versus 1.02 ms for FIFO.
 - **Why the gaps are small:** experiment finalization interleaves strategy jobs round-robin, so FIFO already mixes cheap and expensive bands. Longest-first mainly removes the residual tail: it lowers worker imbalance and the gap to the lower bound rather than changing the overall work distribution.
 - **Determinism:** all 41 measured runs produced identical job results, so policy changes only affect dispatch order.
 - **Noise caveat:** this host has 4 performance and 4 efficiency cores; small makespan gaps may move between repetitions.
