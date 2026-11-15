@@ -417,6 +417,7 @@ def summarize(
         "throughput": float(performance["throughput"]),
         "mean_latency_seconds": float(performance["mean_latency"]),
         "median_latency_seconds": float(performance["median_latency"]),
+        "p90_latency_seconds": percentile(durations, 0.90),
         "p95_latency_seconds": float(performance["p95_latency"]),
         "total_work_seconds": float(performance["total_work_seconds"]),
         "max_job_seconds": max(durations, default=0.0),
@@ -679,6 +680,23 @@ def median(records: list[dict[str, Any]], key: str) -> float:
     return float(statistics.median(record[key] for record in records))
 
 
+def percentile(values: list[float], fraction: float) -> float:
+    """Nearest-rank percentile of a sample.
+
+    Returns 0.0 for an empty sample. Used to report the per-job latency
+    tail without depending on the engine's own summary statistics.
+    """
+    if not values:
+        return 0.0
+
+    ordered = sorted(values)
+    index = min(
+        len(ordered) - 1,
+        max(0, round(fraction * (len(ordered) - 1))),
+    )
+    return float(ordered[index])
+
+
 def format_seconds(value: float) -> str:
     return f"{value:.3f}"
 
@@ -806,8 +824,8 @@ def build_markdown(
         "which starts after market data is loaded and, for distributed runs, "
         "after workers connect. *Fixed overhead* is their difference. "
         "Throughput and latency come from each run's result document. "
-        "Process-mode latency includes each worker's per-job market-data "
-        "load; local modes preload the dataset once."
+        "Each process-mode worker loads the dataset once and reuses it from "
+        "a per-worker cache; local modes preload the dataset once."
     )
     lines.append("")
 
@@ -856,9 +874,9 @@ def build_markdown(
     )
     lines.append(
         f"- **Processes vs threads:** the process pipeline takes "
-        f"{process_vs_threads:.2f}x longer in the execution phase. Each "
-        "worker reloads the market-data CSV for every job and results cross "
-        "a TCP boundary, so remote mean job latency is "
+        f"{process_vs_threads:.2f}x longer in the execution phase. Each job "
+        "crosses a TCP boundary and pays per-job worker setup, while the "
+        "dataset is cached between jobs, so remote mean job latency is "
         f"{processes['mean_latency_seconds'] * 1000:.1f} ms versus "
         f"{threaded['mean_latency_seconds'] * 1000:.1f} ms locally."
     )

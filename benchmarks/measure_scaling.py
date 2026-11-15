@@ -262,6 +262,8 @@ def summarize(
         "execution_seconds": median(records, "execution_seconds"),
         "throughput": jobs / wall_seconds,
         "mean_latency_seconds": median(records, "mean_latency_seconds"),
+        "median_latency_seconds": median(records, "median_latency_seconds"),
+        "p90_latency_seconds": median(records, "p90_latency_seconds"),
         "p95_latency_seconds": median(records, "p95_latency_seconds"),
     }
 
@@ -393,9 +395,9 @@ def build_markdown(
     lines.append(
         "*Execution wall* is the runner/coordinator's own "
         "`summary.wall_seconds`, which starts after data loading and, for "
-        "distributed runs, after workers connect. Process-mode job latency "
-        "includes each worker's per-job CSV load; local modes preload the "
-        "dataset once."
+        "distributed runs, after workers connect. Each process-mode worker "
+        "loads the dataset once and then reuses it from a per-worker cache; "
+        "local modes preload the dataset once."
     )
     lines.append("")
 
@@ -437,8 +439,9 @@ def build_markdown(
                 f"- **Distributed overhead:** one worker sustains "
                 f"{first_process['throughput']:.1f} jobs/s, "
                 f"{by_key['sequential']['throughput'] / first_process['throughput']:.2f}x "
-                "slower than sequential. Each job reloads the market-data "
-                "CSV in a worker and crosses a TCP boundary."
+                "slower than sequential. Each job crosses a TCP boundary and "
+                "pays per-job worker setup, while the dataset itself is "
+                "cached after the worker's first load."
             )
         if thread_keys:
             lines.append(
