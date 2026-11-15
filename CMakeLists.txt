@@ -69,6 +69,7 @@ add_library(backtester_core
     src/comm/tcp_channel.cpp
 
     # Worker loop and its transports
+    src/worker/dataset_cache.cpp
     src/worker/stdio_transport.cpp
     src/worker/worker.cpp
     src/worker/worker_job.cpp
@@ -78,6 +79,7 @@ add_library(backtester_core
     src/coordinator/job_queue.cpp
     src/coordinator/job_state.cpp
     src/coordinator/persistent_state.cpp
+    src/coordinator/scheduling.cpp
 )
 
 target_include_directories(backtester_core PUBLIC include/backtester)
@@ -201,6 +203,11 @@ add_backtester_test(
     persistent_state_tests coordinator/persistent_state_test.cpp
 )
 
+# Worker dataset cache
+add_backtester_test(
+    dataset_cache_tests worker/dataset_cache_test.cpp
+)
+
 # Worker loop, job execution, and development transport
 add_backtester_test(
     worker_tests worker/worker_test.cpp
@@ -285,6 +292,15 @@ add_backtester_test(
 )
 # Real sockets with intentional sleeps; bound the runtime under load.
 set_tests_properties(coordinator_uneven_workload_test PROPERTIES TIMEOUT 60)
+
+add_backtester_test(
+    coordinator_batch_test
+    integration/coordinator_batch_test.cpp
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+# Real sockets with prefetched work and a deliberate disconnect; a regression
+# in batch requeueing must not hang the suite.
+set_tests_properties(coordinator_batch_test PROPERTIES TIMEOUT 30)
 
 # End-to-end test: runs the backtester executable against real market data.
 add_backtester_test(

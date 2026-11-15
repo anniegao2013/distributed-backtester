@@ -17,6 +17,14 @@ constexpr const char* kParametersPath = "$.job.parameters";
 }  // namespace
 
 WorkerJobOutcome execute_backtest_job(const BacktestJob& job) {
+    DatasetCache dataset_cache;
+    return execute_backtest_job(job, dataset_cache);
+}
+
+WorkerJobOutcome execute_backtest_job(
+    const BacktestJob& job,
+    DatasetCache& dataset_cache
+) {
     WorkerJobOutcome outcome;
 
     const auto start = std::chrono::steady_clock::now();
@@ -34,8 +42,8 @@ WorkerJobOutcome execute_backtest_job(const BacktestJob& job) {
         const auto strategy =
             create_strategy(job.strategy_type, job.parameters);
 
-        const std::vector<MarketBar> dataset =
-            load_market_data(job.data.path);
+        const std::vector<MarketBar>& dataset =
+            dataset_cache.load(job.data.path);
 
         if (dataset.empty()) {
             throw std::runtime_error(

@@ -3,6 +3,7 @@
 #include "comm/message_channel.h"
 #include "protocol/protocol.h"
 #include "trading/backtest_engine.h"
+#include "worker/dataset_cache.h"
 
 #include <cstddef>
 #include <functional>
@@ -46,6 +47,8 @@ struct WorkerStats {
     std::size_t jobs_invalid = 0;
     std::size_t worker_errors = 0;
     std::size_t shutdowns_received = 0;
+    std::size_t dataset_cache_hits = 0;
+    std::size_t dataset_cache_misses = 0;
 };
 
 // The outcome of running one job. `status` uses the wire vocabulary:
@@ -64,7 +67,15 @@ struct WorkerJobOutcome {
 // strategy, and runs the existing backtesting engine. Never throws for a bad
 // job: a semantic validation failure becomes status "invalid" and any other
 // failure, including missing or unusable data, becomes status "failed".
+//
+// The one-argument form uses a throwaway cache, so it retains its previous
+// behavior. The cache-aware form reuses parsed datasets across jobs and is what
+// run_worker() uses.
 WorkerJobOutcome execute_backtest_job(const BacktestJob& job);
+WorkerJobOutcome execute_backtest_job(
+    const BacktestJob& job,
+    DatasetCache& dataset_cache
+);
 
 // Builds the reply for a job, echoing its identity and parameters. Metrics and
 // trades are attached only for a completed job; an error is attached otherwise.

@@ -213,7 +213,7 @@ JobResult run_backtest(
         // Record equity only for bars inside the requested range. Equity is
         // cash plus the mark-to-market value of every owned position.
         const double equity =
-            portfolio.equity({{config.asset, bar.close}});
+            portfolio.equity_at(config.asset, bar.close);
         equity_curve.push_back(equity);
 
         // Today's signal can execute only at the next bar's open.

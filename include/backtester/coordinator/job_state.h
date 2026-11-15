@@ -9,7 +9,7 @@
 
 // Lifecycle of one job as observed by the coordinator.
 //
-//   pending    waiting in the coordinator's FIFO job queue
+//   pending    waiting in the coordinator's pending-job queue
 //   running    assigned to a worker and currently executing
 //   completed  a successful result was received
 //   failed     execution, transport, or result processing failed

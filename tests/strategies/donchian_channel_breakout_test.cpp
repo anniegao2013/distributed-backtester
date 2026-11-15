@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <cstddef>
 
 namespace {
 
@@ -299,6 +300,67 @@ void test_exit_channel_uses_lows_not_closes() {
     );
 }
 
+void test_incremental_matches_one_shot() {
+    struct Case {
+        std::vector<double> highs;
+        std::vector<double> lows;
+        std::vector<double> closes;
+        std::size_t entry_period;
+        std::size_t exit_period;
+        bool has_position;
+    };
+
+    const std::vector<Case> cases = {
+        // Entry breakout.
+        {{10.0, 11.0, 12.0, 12.5},
+         {9.0, 9.5, 10.0, 11.0},
+         {9.5, 10.0, 11.0, 12.5},
+         3, 2, false},
+        // Exit breakdown.
+        {{11.0, 10.5, 10.0, 9.5},
+         {10.0, 9.0, 8.0, 7.5},
+         {10.5, 9.5, 8.5, 7.5},
+         5, 3, true},
+        // Insufficient history.
+        {{10.0, 10.0},
+         {9.0, 9.0},
+         {9.5, 9.5},
+         3, 2, false}
+    };
+
+    for (const Case& item : cases) {
+        DonchianChannelBreakout one_shot(
+            item.entry_period, item.exit_period);
+        const Signal expected = one_shot.on_bar(
+            make_history(item.highs, item.lows, item.closes),
+            item.has_position);
+
+        // Feed the same series one bar at a time, as the engine does.
+        DonchianChannelBreakout incremental(
+            item.entry_period, item.exit_period);
+        Signal actual = Signal::Hold;
+
+        for (std::size_t i = 1; i <= item.closes.size(); ++i) {
+            const auto end = static_cast<std::ptrdiff_t>(i);
+            const std::vector<double> highs(
+                item.highs.begin(), item.highs.begin() + end);
+            const std::vector<double> lows(
+                item.lows.begin(), item.lows.begin() + end);
+            const std::vector<double> closes(
+                item.closes.begin(), item.closes.begin() + end);
+
+            actual = incremental.on_bar(
+                make_history(highs, lows, closes),
+                item.has_position);
+        }
+
+        expect_signal(
+            actual,
+            expected,
+            "Incremental Donchian state must match a one-shot call");
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -312,6 +374,8 @@ int main() {
     run_test("no repeated buy while in position", test_no_repeated_buy_while_in_position);
     run_test("entry channel uses highs not closes", test_entry_channel_uses_highs_not_closes);
     run_test("exit channel uses lows not closes", test_exit_channel_uses_lows_not_closes);
+    run_test("incremental state matches one-shot",
+             test_incremental_matches_one_shot);
 
     std::cout << "\nResults: " << passed << " passed, "
               << failed << " failed\n";

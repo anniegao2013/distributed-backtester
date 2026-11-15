@@ -72,6 +72,10 @@ WorkerStats run_worker(
 ) {
     WorkerStats stats;
 
+    // One cache lives for the whole worker session, so repeated jobs against
+    // the same dataset skip CSV parsing.
+    DatasetCache dataset_cache;
+
     transport.connect();
 
     WorkerReadyMessage ready;
@@ -207,7 +211,7 @@ WorkerStats run_worker(
             ++stats.jobs_received;
 
             const WorkerJobOutcome outcome =
-                execute_backtest_job(job.job);
+                execute_backtest_job(job.job, dataset_cache);
 
             transport.send(
                 backtest_result_to_json(
@@ -255,6 +259,9 @@ WorkerStats run_worker(
             );
         }
     }
+
+    stats.dataset_cache_hits = dataset_cache.hits();
+    stats.dataset_cache_misses = dataset_cache.misses();
 
     log(
         config,

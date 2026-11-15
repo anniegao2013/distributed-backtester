@@ -201,6 +201,12 @@ Results are returned in execution-plan order (the interleaved job order), not
 ranked. `summary.best_*` identifies the highest Sharpe ratio, with total return
 as the tie-breaker.
 
+Local execution uses a fixed pool of worker threads sized to
+`min(max_concurrent_jobs, jobs)` (with `0` resolved to hardware concurrency).
+Each thread pulls the next job from the execution plan, records its outcome
+through the result collector, and immediately takes another, so a slow job does
+not hold up later work.
+
 `status` values:
 
 | Status | Meaning |
@@ -308,6 +314,7 @@ ExperimentResult result = run_experiment(request);       // loads data + runs
 | [`experiments/crossover_sweep.json`](../experiments/crossover_sweep.json) | A small parameter grid. |
 | [`experiments/rsi_sweep.json`](../experiments/rsi_sweep.json) | Explicit execution costs and concurrency. |
 | [`experiments/donchian_breakout.json`](../experiments/donchian_breakout.json) | A single explicit configuration with trades included. |
+| [`experiments/heterogeneous_scheduling.json`](../experiments/heterogeneous_scheduling.json) | A 225-job mixed-strategy sweep with fast and slow bands for scheduling benchmarks. |
 
 ## Distributed execution
 
@@ -319,6 +326,8 @@ by [`schema/backtest_job.schema.json`](../schema/backtest_job.schema.json) and
 [`schema/backtest_result.schema.json`](../schema/backtest_result.schema.json).
 [`backtester_coordinator`](coordinator.md) accepts workers over TCP, dispatches
 jobs to idle workers, and reports every completed or failed result into the same
-terminal-state collector used by local execution. The run completes only when
-every job is terminal, then aggregates into the same response shape described
-above.
+terminal-state collector used by local execution. With `--dispatch-batch N` the
+coordinator can keep several jobs assigned to a busy worker and grow the
+pipeline when the queue is deep, shrinking it again near the tail. The run
+completes only when every job is terminal, then aggregates into the same
+response shape described above.

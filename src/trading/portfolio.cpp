@@ -184,3 +184,28 @@ double Portfolio::equity(
 ) const {
     return cash_ + market_value(prices);
 }
+
+double Portfolio::equity_at(
+    const std::string& symbol,
+    double price
+) const {
+    double value = cash_;
+
+    for (const auto& [held, position] : positions_) {
+        if (held != symbol) {
+            throw std::invalid_argument(
+                "Missing or invalid price for held symbol: " + held
+            );
+        }
+
+        if (!std::isfinite(price) || price <= 0.0) {
+            throw std::invalid_argument(
+                "Missing or invalid price for held symbol: " + symbol
+            );
+        }
+
+        value += position.quantity * price;
+    }
+
+    return value;
+}

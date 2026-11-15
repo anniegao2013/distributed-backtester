@@ -4,10 +4,9 @@
 #include "experiment/result_collector.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstddef>
-#include <functional>
-#include <future>
 #include <string>
 #include <thread>
 #include <utility>
@@ -66,11 +65,6 @@ ExperimentJobOutcome failed_outcome(
         : error;
     return outcome;
 }
-
-struct InFlightJob {
-    std::size_t index = 0;
-    std::future<ExperimentJobOutcome> future;
-};
 
 double process_cpu_seconds() {
     struct rusage usage;
@@ -131,50 +125,68 @@ ExperimentResult run_experiment(
     // to become terminal and then hands the ordered outcomes to aggregation.
     ExperimentResultCollector collector(request.jobs);
 
-    std::vector<InFlightJob> in_flight;
-    in_flight.reserve(max_concurrent);
+    // Fixed pool: each worker pulls the next job index and reports its outcome
+    // directly to the collector, which restores request order during
+    // aggregation. Unlike the previous front-wait design, a slow job does not
+    // hold a capacity slot while later jobs finish, and no thread is created
+    // per job.
+    std::atomic<std::size_t> next_job{0};
 
-    std::size_t next_job = 0;
+    const auto run_queued_jobs = [&]() {
+        while (true) {
+            const std::size_t index =
+                next_job.fetch_add(1, std::memory_order_relaxed);
 
-    while (next_job < request.jobs.size() || !in_flight.empty()) {
-        while (next_job < request.jobs.size() &&
-               in_flight.size() < max_concurrent) {
-            in_flight.push_back(
-                InFlightJob{
-                    next_job,
-                    std::async(
-                        std::launch::async,
-                        run_job,
-                        std::cref(dataset),
-                        std::cref(request.data),
-                        std::cref(request.execution),
-                        request.jobs[next_job]
-                    )
-                }
-            );
-            ++next_job;
+            if (index >= request.jobs.size()) {
+                return;
+            }
+
+            ExperimentJobOutcome outcome;
+
+            try {
+                outcome = run_job(
+                    dataset,
+                    request.data,
+                    request.execution,
+                    request.jobs[index]
+                );
+            } catch (const std::exception& error) {
+                outcome = failed_outcome(
+                    request.jobs[index],
+                    error.what()
+                );
+            } catch (...) {
+                outcome = failed_outcome(
+                    request.jobs[index],
+                    "job threw an unknown exception"
+                );
+            }
+
+            collector.record(index, std::move(outcome));
         }
+    };
 
-        // Retire the oldest job before launching another one.
-        InFlightJob& current = in_flight.front();
-        ExperimentJobOutcome outcome;
+    const std::size_t pool_size =
+        std::min(max_concurrent, request.jobs.size());
 
-        try {
-            outcome = current.future.get();
-        } catch (const std::exception& error) {
-            outcome = failed_outcome(
-                request.jobs[current.index],
-                error.what()
-            );
-        } catch (...) {
-            outcome = failed_outcome(
-                request.jobs[current.index],
-                "job threw an unknown exception"
-            );
+    std::vector<std::thread> workers;
+    workers.reserve(pool_size);
+
+    try {
+        for (std::size_t i = 0; i < pool_size; ++i) {
+            workers.emplace_back(run_queued_jobs);
         }
+    } catch (...) {
+        // Drain already-started workers before propagating so their outcomes
+        // are not lost and their threads are joined.
+        for (std::thread& worker : workers) {
+            worker.join();
+        }
+        throw;
+    }
 
-        collector.record(current.index, std::move(outcome));
-        in_flight.erase(in_flight.begin());
+    for (std::thread& worker : workers) {
+        worker.join();
     }
 
     collector.wait();

@@ -299,6 +299,14 @@ void test_loop_completes_job() {
     expect(stats.messages_received == 1, "expected one message");
     expect(stats.jobs_received == 1, "expected one job");
     expect(stats.jobs_completed == 1, "expected one completed job");
+    expect(
+        stats.dataset_cache_misses == 1,
+        "the first job must load its dataset"
+    );
+    expect(
+        stats.dataset_cache_hits == 0,
+        "one job cannot reuse a cached dataset"
+    );
     expect(stats.worker_errors == 0, "expected no worker errors");
     expect(transport.sent.size() == 2, "expected ready and one reply");
     expect_ready(transport, "worker-a");
@@ -327,6 +335,14 @@ void test_loop_processes_jobs_sequentially() {
 
     expect(stats.messages_received == 2, "expected two messages");
     expect(stats.jobs_completed == 2, "expected two completed jobs");
+    expect(
+        stats.dataset_cache_misses == 1,
+        "the first job must load the dataset"
+    );
+    expect(
+        stats.dataset_cache_hits == 1,
+        "the second job must reuse the cached dataset"
+    );
     expect(transport.sent.size() == 3, "expected ready and two replies");
     expect_ready(transport);
 

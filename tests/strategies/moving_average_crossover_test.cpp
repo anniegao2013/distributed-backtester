@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <cstddef>
 
 namespace {
 
@@ -175,6 +176,39 @@ void test_no_signal_without_crossover() {
         "Being above the long SMA is not itself a crossover");
 }
 
+void test_incremental_matches_one_shot() {
+    const std::vector<std::vector<double>> series = {
+        {10, 9, 8, 9, 13},
+        {8, 9, 10, 13, 4},
+        {10, 10, 10, 10, 10},
+        {8, 9, 10, 11, 12},
+        {10, 9, 8, 7, 6, 5, 4, 3, 2, 1}
+    };
+
+    for (const auto& closes : series) {
+        const auto history = make_history(closes);
+
+        MovingAverageCrossover one_shot(2, 3);
+        const Signal expected = one_shot.on_bar(history, false);
+
+        // Feed the same series one bar at a time, as the engine does.
+        MovingAverageCrossover incremental(2, 3);
+        Signal actual = Signal::Hold;
+
+        for (std::size_t i = 1; i <= history.size(); ++i) {
+            const std::vector<MarketBar> prefix(
+                history.begin(),
+                history.begin() + static_cast<std::ptrdiff_t>(i));
+            actual = incremental.on_bar(prefix, false);
+        }
+
+        expect_signal(
+            actual,
+            expected,
+            "Incremental moving-average state must match a one-shot call");
+    }
+}
+
 } // namespace
 
 int main() {
@@ -189,6 +223,8 @@ int main() {
     run_test("no Sell while flat", test_no_sell_while_flat);
     run_test("relative position alone does not trigger trade",
              test_no_signal_without_crossover);
+    run_test("incremental state matches one-shot",
+             test_incremental_matches_one_shot);
 
     std::cout << "\nResults: " << passed << " passed, "
               << failed << " failed\n";

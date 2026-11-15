@@ -592,6 +592,59 @@ void test_run_experiment_json() {
     std::filesystem::remove(path, ignored);
 }
 
+void test_run_experiment_preserves_order_with_pool() {
+    const auto path = write_market_csv();
+
+    try {
+        const std::string text =
+            R"({"schema_version":1,"experiment_id":"pool-order",)"
+            R"("data":{"path":")" + path.string() +
+            R"(","asset":"TEST","start_date":"2020-01-01",)"
+            R"("end_date":"2020-12-31"},)"
+            R"("execution":{"max_concurrent_jobs":4},)"
+            R"("strategies":[{"id":"ma","type":"moving_average_crossover",)"
+            R"("grid":{"short_window":[2,3,4],"long_window":[6]}}]})";
+
+        ExperimentRequest request = parse_experiment_json(text);
+        finalize_experiment(request);
+
+        expect(
+            request.jobs.size() == 3,
+            "the grid should expand to three jobs"
+        );
+
+        const ExperimentResult result = run_experiment(request);
+
+        expect(
+            result.results.size() == request.jobs.size(),
+            "every job must produce one outcome"
+        );
+        expect(
+            result.summary.jobs_completed == request.jobs.size() &&
+                result.summary.jobs_failed == 0,
+            "every job must complete"
+        );
+        expect(
+            result.max_concurrent_jobs == 4,
+            "the configured pool size must be reported"
+        );
+
+        for (std::size_t i = 0; i < request.jobs.size(); ++i) {
+            expect(
+                result.results[i].job.job_id == request.jobs[i].job_id,
+                "pool outcomes must stay in request order"
+            );
+        }
+    } catch (...) {
+        std::error_code ignored;
+        std::filesystem::remove(path, ignored);
+        throw;
+    }
+
+    std::error_code ignored;
+    std::filesystem::remove(path, ignored);
+}
+
 void test_service_error_responses() {
     const JsonValue parse_error = parse_json(
         run_experiment_json("{", false)
@@ -682,6 +735,10 @@ int main() {
     run_test("strategy validation", test_strategy_validation);
     run_test("experiment validation", test_experiment_validation);
     run_test("run experiment JSON", test_run_experiment_json);
+    run_test(
+        "run experiment preserves order with pool",
+        test_run_experiment_preserves_order_with_pool
+    );
     run_test("service error responses", test_service_error_responses);
     run_test("strategy factory", test_strategy_factory);
 

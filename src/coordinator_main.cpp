@@ -41,11 +41,22 @@ constexpr const char* kUsage =
     "                          Maximum time to wait for one job's result; the\n"
     "                          worker is treated as lost on timeout. 0 disables\n"
     "                          timeouts. Default: 0.\n"
+    "      --dispatch-batch N  Maximum jobs kept assigned to one worker before\n"
+    "                          waiting for a result. Larger values hide the\n"
+    "                          dispatch round trip; the target shrinks near the\n"
+    "                          queue tail. Default: 1 (no prefetching).\n"
+    "      --scheduling-policy NAME\n"
+    "                          Pending-job order: fifo, lifo, shortest-first, or\n"
+    "                          longest-first. The last two use a duration\n"
+    "                          estimate derived from strategy parameters.\n"
+    "                          Default: fifo.\n"
     "      --json              Emit the aggregated result as JSON.\n"
     "  -h, --help              Show this help.\n"
     "\n"
     "Examples:\n"
     "  backtester_coordinator -e experiments/crossover_sweep.json -n 2\n"
+    "  backtester_coordinator -e experiments/heterogeneous_scheduling.json \\\n"
+    "      -n 4 --scheduling-policy longest-first\n"
     "  backtester_coordinator -e experiments/demo.json --json\n";
 
 std::string read_stream(std::istream& stream) {
@@ -86,6 +97,8 @@ struct Options {
     std::size_t workers = 1;
     std::size_t max_attempts = 3;
     std::size_t job_timeout_seconds = 0;
+    std::size_t dispatch_batch = 1;
+    SchedulingPolicy scheduling_policy = SchedulingPolicy::Fifo;
 };
 
 std::size_t parse_worker_count(const std::string& text) {
@@ -191,6 +204,54 @@ std::size_t parse_job_timeout(const std::string& text) {
     return static_cast<std::size_t>(value);
 }
 
+std::size_t parse_dispatch_batch(const std::string& text) {
+    if (text.empty()) {
+        throw std::invalid_argument(
+            "--dispatch-batch requires a positive integer"
+        );
+    }
+
+    for (char c : text) {
+        if (c < '0' || c > '9') {
+            throw std::invalid_argument(
+                "--dispatch-batch requires a positive integer, got '" +
+                text + "'"
+            );
+        }
+    }
+
+    unsigned long value = 0;
+
+    try {
+        value = std::stoul(text);
+    } catch (const std::exception&) {
+        throw std::invalid_argument(
+            "--dispatch-batch value is out of range: '" + text + "'"
+        );
+    }
+
+    if (value == 0 || value > 1024) {
+        throw std::invalid_argument(
+            "--dispatch-batch must be between 1 and 1024"
+        );
+    }
+
+    return static_cast<std::size_t>(value);
+}
+
+SchedulingPolicy parse_policy_argument(const std::string& text) {
+    SchedulingPolicy policy = SchedulingPolicy::Fifo;
+
+    if (!parse_scheduling_policy(text, policy)) {
+        throw std::invalid_argument(
+            "--scheduling-policy must be fifo, lifo, shortest-first, or "
+            "longest-first; got '" + text + "'"
+        );
+    }
+
+    return policy;
+}
+
 Options parse_options(int argc, char* argv[]) {
     Options options;
     bool has_experiment = false;
@@ -234,6 +295,23 @@ Options parse_options(int argc, char* argv[]) {
             }
 
             options.job_timeout_seconds = parse_job_timeout(argv[++i]);
+        } else if (argument == "--dispatch-batch") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    "--dispatch-batch requires a positive integer"
+                );
+            }
+
+            options.dispatch_batch = parse_dispatch_batch(argv[++i]);
+        } else if (argument == "--scheduling-policy") {
+            if (i + 1 >= argc) {
+                throw std::invalid_argument(
+                    "--scheduling-policy requires a policy name"
+                );
+            }
+
+            options.scheduling_policy =
+                parse_policy_argument(argv[++i]);
         } else if (argument == "-e" || argument == "--experiment") {
             if (i + 1 >= argc) {
                 throw std::invalid_argument(
@@ -367,6 +445,8 @@ int main(int argc, char* argv[]) {
         config.job_timeout = std::chrono::milliseconds(
             options.job_timeout_seconds * 1000
         );
+        config.dispatch_batch_size = options.dispatch_batch;
+        config.scheduling_policy = options.scheduling_policy;
         config.log = [](const std::string& message) {
             std::cerr << "[coordinator] " << message << '\n';
         };

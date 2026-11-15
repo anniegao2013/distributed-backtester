@@ -50,6 +50,30 @@ QueuedJob make_job(std::size_t index) {
     return job;
 }
 
+QueuedJob make_strategy_job(
+    std::size_t index,
+    const std::string& strategy_type,
+    double first,
+    double second
+) {
+    QueuedJob job = make_job(index);
+    job.message.job.strategy_type = strategy_type;
+
+    if (strategy_type == "moving_average_crossover") {
+        job.message.job.parameters["short_window"] = first;
+        job.message.job.parameters["long_window"] = second;
+    } else if (strategy_type == "donchian_channel_breakout") {
+        job.message.job.parameters["entry_period"] = first;
+        job.message.job.parameters["exit_period"] = second;
+    } else if (strategy_type == "rsi_mean_reversion") {
+        job.message.job.parameters["rsi_period"] = first;
+        job.message.job.parameters["oversold_threshold"] = second;
+        job.message.job.parameters["exit_threshold"] = 70.0;
+    }
+
+    return job;
+}
+
 void test_fifo_order() {
     JobQueue queue;
 
@@ -284,6 +308,200 @@ void test_requeue_back_appends_retry() {
     );
 }
 
+void test_lifo_order() {
+    JobQueue queue(SchedulingPolicy::Lifo);
+
+    for (std::size_t i = 0; i < 3; ++i) {
+        queue.push(make_job(i));
+    }
+
+    queue.close();
+
+    for (std::size_t expected : {std::size_t{2}, std::size_t{1},
+                                 std::size_t{0}}) {
+        const std::optional<QueuedJob> job = queue.pop();
+        expect(job.has_value(), "a closed LIFO queue must yield jobs");
+        expect(
+            job->index == expected,
+            "LIFO must pop the most recently pushed job"
+        );
+    }
+
+    expect(!queue.pop().has_value(), "LIFO must empty like FIFO");
+}
+
+void test_lifo_requeue_semantics() {
+    JobQueue queue(SchedulingPolicy::Lifo);
+
+    queue.push(make_job(0));
+    queue.push(make_job(1));
+
+    // The most recent job pops first.
+    std::optional<QueuedJob> job = queue.pop();
+    expect(job.has_value() && job->index == 1,
+           "LIFO must pop the latest job first");
+
+    // A delivery failure is offered again next even under LIFO.
+    queue.requeue_front(std::move(*job));
+    job = queue.pop();
+    expect(job.has_value() && job->index == 1,
+           "requeue_front must return a job to the LIFO front");
+
+    // A retry goes to the logical back, which LIFO pops last.
+    QueuedJob retry = std::move(*job);
+    retry.attempts = 1;
+    queue.requeue_back(std::move(retry));
+
+    job = queue.pop();
+    expect(job.has_value() && job->index == 0,
+           "a LIFO retry must not jump ahead of queued work");
+
+    job = queue.pop();
+    expect(job.has_value() && job->index == 1,
+           "the LIFO retry must remain available last");
+    expect(job->attempts == 1, "the retry must keep its attempt count");
+}
+
+void test_estimated_costs_rank_strategies() {
+    const QueuedJob rsi = make_strategy_job(
+        0, "rsi_mean_reversion", 200.0, 25.0
+    );
+    const QueuedJob fast_ma = make_strategy_job(
+        1, "moving_average_crossover", 5.0, 20.0
+    );
+    const QueuedJob slow_donchian = make_strategy_job(
+        2, "donchian_channel_breakout", 300.0, 300.0
+    );
+    const QueuedJob slow_ma = make_strategy_job(
+        3, "moving_average_crossover", 50.0, 300.0
+    );
+
+    expect(
+        estimate_job_cost(rsi.message.job) <
+            estimate_job_cost(fast_ma.message.job),
+        "RSI must be estimated cheaper than a short moving-average job"
+    );
+    expect(
+        estimate_job_cost(fast_ma.message.job) <
+            estimate_job_cost(slow_donchian.message.job),
+        "a short moving-average job must rank below a slow Donchian job"
+    );
+    expect(
+        estimate_job_cost(slow_donchian.message.job) <
+            estimate_job_cost(slow_ma.message.job),
+        "the two slow configurations must be ordered by lookback"
+    );
+}
+
+void test_shortest_first_order() {
+    JobQueue queue(SchedulingPolicy::ShortestJobFirst);
+
+    queue.push(make_strategy_job(
+        0, "moving_average_crossover", 50.0, 300.0
+    ));
+    queue.push(make_strategy_job(
+        1, "rsi_mean_reversion", 200.0, 25.0
+    ));
+    queue.push(make_strategy_job(
+        2, "donchian_channel_breakout", 300.0, 300.0
+    ));
+    queue.push(make_strategy_job(
+        3, "moving_average_crossover", 5.0, 20.0
+    ));
+    queue.close();
+
+    for (std::size_t expected : {std::size_t{1}, std::size_t{3},
+                                 std::size_t{2}, std::size_t{0}}) {
+        const std::optional<QueuedJob> job = queue.pop();
+        expect(job.has_value(), "the priority queue must yield jobs");
+        expect(
+            job->index == expected,
+            "shortest-first must pop the cheapest estimate first"
+        );
+    }
+}
+
+void test_longest_first_order() {
+    JobQueue queue(SchedulingPolicy::LongestJobFirst);
+
+    queue.push(make_strategy_job(
+        0, "moving_average_crossover", 50.0, 300.0
+    ));
+    queue.push(make_strategy_job(
+        1, "rsi_mean_reversion", 200.0, 25.0
+    ));
+    queue.push(make_strategy_job(
+        2, "donchian_channel_breakout", 300.0, 300.0
+    ));
+    queue.push(make_strategy_job(
+        3, "moving_average_crossover", 5.0, 20.0
+    ));
+    queue.close();
+
+    for (std::size_t expected : {std::size_t{0}, std::size_t{2},
+                                 std::size_t{3}, std::size_t{1}}) {
+        const std::optional<QueuedJob> job = queue.pop();
+        expect(job.has_value(), "the priority queue must yield jobs");
+        expect(
+            job->index == expected,
+            "longest-first must pop the most expensive estimate first"
+        );
+    }
+}
+
+void test_priority_preserves_fifo_for_ties() {
+    JobQueue queue(SchedulingPolicy::LongestJobFirst);
+
+    for (std::size_t i = 0; i < 4; ++i) {
+        queue.push(make_job(i));
+    }
+
+    queue.close();
+
+    for (std::size_t expected = 0; expected < 4; ++expected) {
+        const std::optional<QueuedJob> job = queue.pop();
+        expect(job.has_value(), "the priority queue must yield jobs");
+        expect(
+            job->index == expected,
+            "equal estimates must keep insertion order"
+        );
+    }
+}
+
+void test_parse_scheduling_policy() {
+    SchedulingPolicy policy = SchedulingPolicy::Lifo;
+
+    expect(parse_scheduling_policy("fifo", policy),
+           "fifo must parse");
+    expect(policy == SchedulingPolicy::Fifo, "fifo must select FIFO");
+
+    expect(parse_scheduling_policy("lifo", policy),
+           "lifo must parse");
+    expect(policy == SchedulingPolicy::Lifo, "lifo must select LIFO");
+
+    expect(parse_scheduling_policy("shortest-first", policy),
+           "shortest-first must parse");
+    expect(policy == SchedulingPolicy::ShortestJobFirst,
+           "shortest-first must select SJF");
+
+    expect(parse_scheduling_policy("ljf", policy),
+           "ljf alias must parse");
+    expect(policy == SchedulingPolicy::LongestJobFirst,
+           "ljf must select LJF");
+
+    const SchedulingPolicy previous = policy;
+    expect(!parse_scheduling_policy("random", policy),
+           "an unknown policy must be rejected");
+    expect(policy == previous,
+           "a rejected policy must not change the output");
+
+    expect(
+        std::string(scheduling_policy_name(
+            SchedulingPolicy::LongestJobFirst)) == "longest-first",
+        "policy names must round-trip to their canonical token"
+    );
+}
+
 void test_concurrent_distribution() {
     constexpr std::size_t kJobCount = 200;
     constexpr std::size_t kConsumerCount = 8;
@@ -362,6 +580,13 @@ int main() {
         test_pop_for_wakes_for_a_job();
         test_requeue_front_returns_work();
         test_requeue_back_appends_retry();
+        test_lifo_order();
+        test_lifo_requeue_semantics();
+        test_estimated_costs_rank_strategies();
+        test_shortest_first_order();
+        test_longest_first_order();
+        test_priority_preserves_fifo_for_ties();
+        test_parse_scheduling_policy();
         test_push_after_close_is_rejected();
         test_concurrent_distribution();
 
